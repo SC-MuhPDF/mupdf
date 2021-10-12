@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 #include "svg-imp.h"
 
@@ -290,6 +312,22 @@ svg_parse_color(fz_context *ctx, svg_document *doc, const char *str, float *rgb)
 	}
 }
 
+static int
+svg_parse_color_from_style_string(fz_context *ctx, svg_document *doc, const char *p, float color[3])
+{
+	char buf[100], *e;
+	while (*p && svg_is_whitespace(*p))
+		++p;
+	fz_strlcpy(buf, p, sizeof buf);
+	e = strchr(buf, ';');
+	if (e)
+		*e = 0;
+	if (!strcmp(buf, "none"))
+		return 0;
+	svg_parse_color(ctx, doc, buf, color);
+	return 1;
+}
+
 void
 svg_parse_color_from_style(fz_context *ctx, svg_document *doc, const char *str,
 	int *fill_is_set, float fill[3],
@@ -299,27 +337,9 @@ svg_parse_color_from_style(fz_context *ctx, svg_document *doc, const char *str,
 
 	p = strstr(str, "fill:");
 	if (p)
-	{
-		p += 5;
-		while (*p && svg_is_whitespace(*p))
-			++p;
-		if (strncmp(p, "none", 4) != 0)
-		{
-			svg_parse_color(ctx, doc, p, fill);
-			*fill_is_set = 1;
-		}
-	}
+		*fill_is_set = svg_parse_color_from_style_string(ctx, doc, p+5, fill);
 
 	p = strstr(str, "stroke:");
 	if (p)
-	{
-		p += 7;
-		while (*p && svg_is_whitespace(*p))
-			++p;
-		if (strncmp(p, "none", 4) != 0)
-		{
-			svg_parse_color(ctx, doc, p, stroke);
-			*stroke_is_set = 1;
-		}
-	}
+		*stroke_is_set = svg_parse_color_from_style_string(ctx, doc, p+7, stroke);
 }

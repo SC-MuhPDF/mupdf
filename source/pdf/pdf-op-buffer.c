@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
@@ -61,26 +83,6 @@ pdf_out_ri(fz_context *ctx, pdf_processor *proc, const char *intent)
 	fz_output *out = ((pdf_output_processor*)proc)->out;
 	if (!((pdf_output_processor*)proc)->extgstate)
 		fz_write_printf(ctx, out, "%n ri\n", intent);
-}
-
-static void
-pdf_out_gs_OP(fz_context *ctx, pdf_processor *proc, int b)
-{
-}
-
-static void
-pdf_out_gs_op(fz_context *ctx, pdf_processor *proc, int b)
-{
-}
-
-static void
-pdf_out_gs_OPM(fz_context *ctx, pdf_processor *proc, int i)
-{
-}
-
-static void
-pdf_out_gs_UseBlackPtComp(fz_context *ctx, pdf_processor *proc, pdf_obj *name)
-{
 }
 
 static void
@@ -601,7 +603,7 @@ pdf_out_BI(fz_context *ctx, pdf_processor *proc, fz_image *img, const char *colo
 	else if (img->colorspace == fz_device_cmyk(ctx))
 		fz_write_string(ctx, out, "/CS/CMYK\n");
 	else if (colorspace)
-		fz_write_printf(ctx, out, "/CS%n/n", colorspace);
+		fz_write_printf(ctx, out, "/CS%n\n", colorspace);
 	else
 		fz_throw(ctx, FZ_ERROR_GENERIC, "BI operator can only show ImageMask, Gray, RGB, or CMYK images");
 	if (img->interpolate)
@@ -928,10 +930,10 @@ pdf_new_output_processor(fz_context *ctx, fz_output *out, int ahxencode)
 		proc->super.op_EX = pdf_out_EX;
 
 		/* extgstate */
-		proc->super.op_gs_OP = pdf_out_gs_OP;
-		proc->super.op_gs_op = pdf_out_gs_op;
-		proc->super.op_gs_OPM = pdf_out_gs_OPM;
-		proc->super.op_gs_UseBlackPtComp = pdf_out_gs_UseBlackPtComp;
+		proc->super.op_gs_OP = NULL;
+		proc->super.op_gs_op = NULL;
+		proc->super.op_gs_OPM = NULL;
+		proc->super.op_gs_UseBlackPtComp = NULL;
 	}
 
 	proc->out = out;

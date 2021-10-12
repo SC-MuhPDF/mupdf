@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "gl-app.h"
 
 #include <string.h>
@@ -379,10 +401,38 @@ static void on_timer(int timer_id)
 	glutTimerFunc(500, on_timer, 0);
 }
 
+void ui_init_dpi(float override_scale)
+{
+	ui.scale = 1;
+
+	if (override_scale)
+	{
+		ui.scale = override_scale;
+	}
+	else
+	{
+		int wmm = glutGet(GLUT_SCREEN_WIDTH_MM);
+		int wpx = glutGet(GLUT_SCREEN_WIDTH);
+		int hmm = glutGet(GLUT_SCREEN_HEIGHT_MM);
+		int hpx = glutGet(GLUT_SCREEN_HEIGHT);
+		if (wmm > 0 && hmm > 0)
+		{
+			float ppi = ((wpx * 254) / wmm + (hpx * 254) / hmm) / 20;
+			if (ppi >= 288) ui.scale = 3;
+			else if (ppi >= 192) ui.scale = 2;
+			else if (ppi >= 144) ui.scale = 1.5f;
+		}
+	}
+
+	ui.fontsize = DEFAULT_UI_FONTSIZE * ui.scale;
+	ui.baseline = DEFAULT_UI_BASELINE * ui.scale;
+	ui.lineheight = DEFAULT_UI_LINEHEIGHT * ui.scale;
+	ui.gridsize = DEFAULT_UI_GRIDSIZE * ui.scale;
+	ui.padsize = 2 * ui.scale;
+}
+
 void ui_init(int w, int h, const char *title)
 {
-	float ui_scale;
-
 #ifdef FREEGLUT
 	glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS);
 #endif
@@ -399,6 +449,8 @@ void ui_init(int w, int h, const char *title)
 #if defined(FREEGLUT) && (GLUT_API_VERSION >= 6)
 	glutKeyboardExtFunc(on_keyboard);
 #else
+	fz_warn(ctx, "This version of MuPDF has been built WITHOUT clipboard or unicode input support!");
+	fz_warn(ctx, "Please file a complaint with your friendly local distribution manager.");
 	glutKeyboardFunc(on_keyboard);
 #endif
 	glutSpecialFunc(on_special);
@@ -413,26 +465,6 @@ void ui_init(int w, int h, const char *title)
 
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
 
-	ui_scale = 1;
-	{
-		int wmm = glutGet(GLUT_SCREEN_WIDTH_MM);
-		int wpx = glutGet(GLUT_SCREEN_WIDTH);
-		int hmm = glutGet(GLUT_SCREEN_HEIGHT_MM);
-		int hpx = glutGet(GLUT_SCREEN_HEIGHT);
-		if (wmm > 0 && hmm > 0)
-		{
-			float ppi = ((wpx * 254) / wmm + (hpx * 254) / hmm) / 20;
-			if (ppi >= 144) ui_scale = 1.5f;
-			if (ppi >= 192) ui_scale = 2.0f;
-			if (ppi >= 288) ui_scale = 3.0f;
-		}
-	}
-
-	ui.fontsize = DEFAULT_UI_FONTSIZE * ui_scale;
-	ui.baseline = DEFAULT_UI_BASELINE * ui_scale;
-	ui.lineheight = DEFAULT_UI_LINEHEIGHT * ui_scale;
-	ui.gridsize = DEFAULT_UI_GRIDSIZE * ui_scale;
-
 	ui_init_fonts();
 
 	ui.overlay_list = glGenLists(1);
@@ -440,6 +472,7 @@ void ui_init(int w, int h, const char *title)
 
 void ui_finish(void)
 {
+	pdf_drop_annot(ctx, ui.selected_annot);
 	glDeleteLists(ui.overlay_list, 1);
 	ui_finish_fonts();
 	glutExit();
@@ -686,8 +719,8 @@ void ui_panel_begin(int w, int h, int padx, int pady, int opaque)
 		glColorHex(UI_COLOR_PANEL);
 		glRectf(area.x0, area.y0, area.x1, area.y1);
 	}
-	area.x0 += padx; area.y0 += padx;
-	area.x1 -= pady; area.y1 -= pady;
+	area.x0 += padx; area.y0 += pady;
+	area.x1 -= padx; area.y1 -= pady;
 	ui_pack_push(area);
 }
 
@@ -743,54 +776,72 @@ void ui_label(const char *fmt, ...)
 
 int ui_button(const char *label)
 {
+	return ui_button_aux(label, 0);
+}
+
+int ui_button_aux(const char *label, int flags)
+{
 	int width = ui_measure_string(label);
 	fz_irect area = ui_pack(width + 20, ui.gridsize);
 	int text_x = area.x0 + ((area.x1 - area.x0) - width) / 2;
-	int pressed;
+	int pressed = 0;
+	int disabled = (flags & 1);
 
-	if (ui_mouse_inside(area))
+	if (!disabled)
 	{
-		ui.hot = label;
-		if (!ui.active && ui.down)
-			ui.active = label;
-	}
+		if (ui_mouse_inside(area))
+		{
+			ui.hot = label;
+			if (!ui.active && ui.down)
+				ui.active = label;
+		}
 
-	pressed = (ui.hot == label && ui.active == label && ui.down);
+		pressed = (ui.hot == label && ui.active == label && ui.down);
+	}
 	ui_draw_bevel_rect(area, UI_COLOR_BUTTON, pressed);
-	glColorHex(UI_COLOR_TEXT_FG);
+	glColorHex(disabled ? UI_COLOR_TEXT_GRAY : UI_COLOR_TEXT_FG);
 	ui_draw_string(text_x + pressed, area.y0+3 + pressed, label);
 
-	return ui.hot == label && ui.active == label && !ui.down;
+	return !disabled && ui.hot == label && ui.active == label && !ui.down;
 }
 
 int ui_checkbox(const char *label, int *value)
 {
+	return ui_checkbox_aux(label, value, 0);
+}
+
+int ui_checkbox_aux(const char *label, int *value, int flags)
+{
 	int width = ui_measure_string(label);
 	fz_irect area = ui_pack(13 + 4 + width, ui.lineheight);
 	fz_irect mark = { area.x0, area.y0 + ui.baseline-12, area.x0 + 13, area.y0 + ui.baseline+1 };
-	int pressed;
+	int pressed = 0;
+	int disabled = (flags & 1);
 
-	glColorHex(UI_COLOR_TEXT_FG);
+	glColorHex(disabled ? UI_COLOR_TEXT_GRAY : UI_COLOR_TEXT_FG);
 	ui_draw_string(mark.x1 + 4, area.y0, label);
 
-	if (ui_mouse_inside(area))
+	if (!disabled)
 	{
-		ui.hot = label;
-		if (!ui.active && ui.down)
-			ui.active = label;
+		if (ui_mouse_inside(area))
+		{
+			ui.hot = label;
+			if (!ui.active && ui.down)
+				ui.active = label;
+		}
+
+		if (ui.hot == label && ui.active == label && !ui.down)
+			*value = !*value;
+
+		pressed = (ui.hot == label && ui.active == label && ui.down);
 	}
-
-	if (ui.hot == label && ui.active == label && !ui.down)
-		*value = !*value;
-
-	pressed = (ui.hot == label && ui.active == label && ui.down);
-	ui_draw_bevel_rect(mark, pressed ? UI_COLOR_PANEL : UI_COLOR_TEXT_BG, 1);
+	ui_draw_bevel_rect(mark, (disabled || pressed) ? UI_COLOR_PANEL : UI_COLOR_TEXT_BG, 1);
 	if (*value)
 	{
 		float ax = mark.x0+2 + 1, ay = mark.y0+2 + 3;
 		float bx = mark.x0+2 + 4, by = mark.y0+2 + 5;
 		float cx = mark.x0+2 + 8, cy = mark.y0+2 + 1;
-		glColorHex(UI_COLOR_TEXT_FG);
+		glColorHex(disabled ? UI_COLOR_TEXT_GRAY : UI_COLOR_TEXT_FG);
 		glBegin(GL_TRIANGLE_STRIP);
 		glVertex2f(ax, ay); glVertex2f(ax, ay+3);
 		glVertex2f(bx, by); glVertex2f(bx, by+3);
@@ -798,7 +849,7 @@ int ui_checkbox(const char *label, int *value)
 		glEnd();
 	}
 
-	return ui.hot == label && ui.active == label && !ui.down;
+	return !disabled && ui.hot == label && ui.active == label && !ui.down;
 }
 
 int ui_slider(int *value, int min, int max, int width)
@@ -974,6 +1025,16 @@ void ui_tree_begin(struct list *list, int count, int req_w, int req_h, int is_tr
 	if (ui.hot == list)
 		list->scroll_y -= ui.scroll_y * ui.lineheight * 3;
 
+	/* keyboard keys */
+	if (ui.hot == list && ui.key == KEY_HOME)
+		list->scroll_y = 0;
+	if (ui.hot == list && ui.key == KEY_END)
+		list->scroll_y = max_scroll_y;
+	if (ui.hot == list && ui.key == KEY_PAGE_UP)
+		list->scroll_y -= ((area.y1 - area.y0) / ui.lineheight) * ui.lineheight;
+	if (ui.hot == list && ui.key == KEY_PAGE_DOWN)
+		list->scroll_y += ((area.y1 - area.y0) / ui.lineheight) * ui.lineheight;
+
 	/* clamp scrolling to client area */
 	if (list->scroll_y >= max_scroll_y)
 		list->scroll_y = max_scroll_y;
@@ -1094,24 +1155,33 @@ void ui_label_with_scrollbar(char *text, int width, int height, int *scroll)
 
 int ui_popup(const void *id, const char *label, int is_button, int count)
 {
+	return ui_popup_aux(id, label, is_button, count, 0);
+}
+
+int ui_popup_aux(const void *id, const char *label, int is_button, int count, int flags)
+{
 	int width = ui_measure_string(label);
 	fz_irect area = ui_pack(width + 22 + 6, ui.gridsize);
 	fz_irect menu_area;
-	int pressed;
+	int pressed = 0;
+	int disabled = (flags & 1);
 
-	if (ui_mouse_inside(area))
+	if (!disabled)
 	{
-		ui.hot = id;
-		if (!ui.active && ui.down)
-			ui.active = id;
-	}
+		if (ui_mouse_inside(area))
+		{
+			ui.hot = id;
+			if (!ui.active && ui.down)
+				ui.active = id;
+		}
 
-	pressed = (ui.active == id);
+		pressed = (ui.active == id);
+	}
 
 	if (is_button)
 	{
 		ui_draw_bevel_rect(area, UI_COLOR_BUTTON, pressed);
-		glColorHex(UI_COLOR_TEXT_FG);
+		glColorHex(disabled? UI_COLOR_TEXT_GRAY : UI_COLOR_TEXT_FG);
 		ui_draw_string(area.x0 + 6+pressed, area.y0+3+pressed, label);
 		glBegin(GL_TRIANGLES);
 		glVertex2f(area.x1+pressed-8-10, area.y0+pressed+9);
@@ -1123,11 +1193,11 @@ int ui_popup(const void *id, const char *label, int is_button, int count)
 	{
 		fz_irect arrow = { area.x1-22, area.y0+2, area.x1-2, area.y1-2 };
 		ui_draw_bevel_rect(area, UI_COLOR_TEXT_BG, 1);
-		glColorHex(UI_COLOR_TEXT_FG);
+		glColorHex(disabled ? UI_COLOR_TEXT_GRAY : UI_COLOR_TEXT_FG);
 		ui_draw_string(area.x0 + 6, area.y0+3, label);
 		ui_draw_ibevel_rect(arrow, UI_COLOR_BUTTON, pressed);
 
-		glColorHex(UI_COLOR_TEXT_FG);
+		glColorHex(disabled ? UI_COLOR_TEXT_GRAY : UI_COLOR_TEXT_FG);
 		glBegin(GL_TRIANGLES);
 		glVertex2f(area.x1+pressed-8-10, area.y0+pressed+9);
 		glVertex2f(area.x1+pressed-8, area.y0+pressed+9);
@@ -1169,9 +1239,15 @@ int ui_popup(const void *id, const char *label, int is_button, int count)
 
 int ui_popup_item(const char *title)
 {
-	fz_irect area = ui_pack(0, ui.lineheight);
+	return ui_popup_item_aux(title, 0);
+}
 
-	if (ui_mouse_inside(area))
+int ui_popup_item_aux(const char *title, int flags)
+{
+	fz_irect area = ui_pack(0, ui.lineheight);
+	int disabled = (flags & 1);
+
+	if (!disabled && ui_mouse_inside(area))
 	{
 		ui.hot = title;
 		glColorHex(UI_COLOR_TEXT_SEL_BG);
@@ -1181,11 +1257,11 @@ int ui_popup_item(const char *title)
 	}
 	else
 	{
-		glColorHex(UI_COLOR_TEXT_FG);
+		glColorHex(disabled ? UI_COLOR_TEXT_GRAY : UI_COLOR_TEXT_FG);
 		ui_draw_string(area.x0 + 4, area.y0, title);
 	}
 
-	return ui.hot == title && !ui.down;
+	return !disabled && ui.hot == title && !ui.down;
 }
 
 void ui_popup_end(void)
@@ -1196,13 +1272,24 @@ void ui_popup_end(void)
 
 int ui_select(const void *id, const char *current, const char *options[], int n)
 {
+	return ui_select_aux(id, current, options, n, 0);
+}
+
+int ui_select_aux(const void *id, const char *current, const char *options[], int n, int flags)
+{
 	int i, choice = -1;
-	if (ui_popup(id, current, 0, n))
+	if (ui_popup_aux(id, current, 0, n, flags))
 	{
 		for (i = 0; i < n; ++i)
-			if (ui_popup_item(options[i]))
+			if (ui_popup_item_aux(options[i], flags))
 				choice = i;
 		ui_popup_end();
 	}
 	return choice;
+}
+
+void ui_select_annot(pdf_annot *annot)
+{
+	pdf_drop_annot(ctx, ui.selected_annot);
+	ui.selected_annot = annot;
 }

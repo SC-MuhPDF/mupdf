@@ -7,6 +7,9 @@
 [submodule "thirdparty/freetype"]
 	path = thirdparty/freetype
 	url = http://git.ghostscript.com/thirdparty-freetype2.git
+[submodule "thirdparty/gumbo-parser"]
+	path = thirdparty/gumbo-parser
+	url = http://git.ghostscript.com/thirdparty-gumbo-parser.git
 [submodule "thirdparty/harfbuzz"]
 	path = thirdparty/harfbuzz
 	url = http://git.ghostscript.com/thirdparty-harfbuzz.git
@@ -28,3 +31,12 @@
 [submodule "thirdparty/freeglut"]
 	path = thirdparty/freeglut
 	url = http://git.ghostscript.com/thirdparty-freeglut.git
+[submodule "thirdparty/tesseract"]
+	path = thirdparty/tesseract
+	url = http://git.ghostscript.com/thirdparty-tesseract.git
+[submodule "thirdparty/leptonica"]
+	path = thirdparty/leptonica
+	url = http://git.ghostscript.com/thirdparty-leptonica.git
+[submodule "thirdparty/extract"]
+	path = thirdparty/extract
+	url = http://git.ghostscript.com/extract.git

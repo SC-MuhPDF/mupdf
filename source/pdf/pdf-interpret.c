@@ -1,5 +1,27 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
-#include "mupdf/pdf.h"
+#include "pdf-annot-imp.h"
 
 #include <string.h>
 #include <math.h>
@@ -126,7 +148,7 @@ parse_inline_image(fz_context *ctx, pdf_csi *csi, fz_stream *stm, char *csname, 
 				if (ch == 'I')
 				{
 					ch = fz_peek_byte(ctx, stm);
-					if (ch == ' ' || ch <= 32 || ch == EOF || ch == '<' || ch == '/')
+					if (ch == ' ' || ch <= 32 || ch == '<' || ch == '/')
 					{
 						found = 1;
 						break;
@@ -325,7 +347,7 @@ pdf_process_Do(fz_context *ctx, pdf_processor *proc, pdf_csi *csi)
 	if (!pdf_is_name(ctx, subtype))
 		fz_throw(ctx, FZ_ERROR_MINOR, "no XObject subtype specified");
 
-	if (pdf_is_hidden_ocg(ctx, csi->doc->ocg, csi->rdb, proc->usage, pdf_dict_get(ctx, xobj, PDF_NAME(OC))))
+	if (pdf_is_ocg_hidden(ctx, csi->doc, csi->rdb, proc->usage, pdf_dict_get(ctx, xobj, PDF_NAME(OC))))
 		return;
 
 	if (pdf_name_eq(ctx, subtype, PDF_NAME(Form)))
@@ -497,7 +519,7 @@ pdf_process_BDC(fz_context *ctx, pdf_processor *proc, pdf_csi *csi)
 	if (strcmp(csi->name, "OC"))
 		return;
 
-	if (pdf_is_hidden_ocg(ctx, csi->doc->ocg, csi->rdb, proc->usage, csi->obj))
+	if (pdf_is_ocg_hidden(ctx, csi->doc, csi->rdb, proc->usage, csi->obj))
 		++proc->hidden;
 }
 
@@ -547,6 +569,18 @@ pdf_process_end(fz_context *ctx, pdf_processor *proc, pdf_csi *csi)
 		proc->op_END(ctx, proc);
 }
 
+static int is_known_bad_word(const char *word)
+{
+	switch (*word)
+	{
+	case 'I': return !strcmp(word, "Infinity");
+	case 'N': return !strcmp(word, "NaN");
+	case 'i': return !strcmp(word, "inf");
+	case 'n': return !strcmp(word, "nan");
+	}
+	return 0;
+}
+
 #define A(a) (a)
 #define B(a,b) (a | b << 8)
 #define C(a,b,c) (a | b << 8 | c << 16)
@@ -574,7 +608,12 @@ pdf_process_keyword(fz_context *ctx, pdf_processor *proc, pdf_csi *csi, fz_strea
 	{
 	default:
 		if (!csi->xbalance)
-			fz_throw(ctx, FZ_ERROR_SYNTAX, "unknown keyword: '%s'", word);
+		{
+			if (is_known_bad_word(word))
+				fz_throw(ctx, FZ_ERROR_MINOR, "unknown keyword: '%s'", word);
+			else
+				fz_throw(ctx, FZ_ERROR_SYNTAX, "unknown keyword: '%s'", word);
+		}
 		break;
 
 	/* general graphics state */
@@ -1039,8 +1078,22 @@ pdf_process_contents(fz_context *ctx, pdf_processor *proc, pdf_document *doc, pd
 	}
 }
 
+/* Bug 702543: It looks like certain types of annotation are never
+ * printed. */
+static int
+pdf_should_print_annot(fz_context *ctx, pdf_annot *annot)
+{
+	enum pdf_annot_type type = pdf_annot_type(ctx, annot);
+
+	/* We may need to add more types here. */
+	if (type == PDF_ANNOT_FILE_ATTACHMENT)
+		return 0;
+
+	return 1;
+}
+
 void
-pdf_process_annot(fz_context *ctx, pdf_processor *proc, pdf_document *doc, pdf_page *page, pdf_annot *annot, fz_cookie *cookie)
+pdf_process_annot(fz_context *ctx, pdf_processor *proc, pdf_annot *annot, fz_cookie *cookie)
 {
 	int flags = pdf_dict_get_int(ctx, annot->obj, PDF_NAME(F));
 
@@ -1053,8 +1106,13 @@ pdf_process_annot(fz_context *ctx, pdf_processor *proc, pdf_document *doc, pdf_p
 
 	if (proc->usage)
 	{
-		if (!strcmp(proc->usage, "Print") && !(flags & PDF_ANNOT_IS_PRINT))
-			return;
+		if (!strcmp(proc->usage, "Print"))
+		{
+			if (!(flags & PDF_ANNOT_IS_PRINT))
+				return;
+			if (!pdf_should_print_annot(ctx, annot))
+				return;
+		}
 		if (!strcmp(proc->usage, "View") && (flags & PDF_ANNOT_IS_NO_VIEW))
 			return;
 	}
@@ -1062,18 +1120,24 @@ pdf_process_annot(fz_context *ctx, pdf_processor *proc, pdf_document *doc, pdf_p
 	/* TODO: NoZoom and NoRotate */
 
 	/* XXX what resources, if any, to use for this check? */
-	if (pdf_is_hidden_ocg(ctx, doc->ocg, NULL, proc->usage, pdf_dict_get(ctx, annot->obj, PDF_NAME(OC))))
+	if (pdf_is_ocg_hidden(ctx, annot->page->doc, NULL, proc->usage, pdf_dict_get(ctx, annot->obj, PDF_NAME(OC))))
 		return;
 
-	if (proc->op_q && proc->op_cm && proc->op_Do_form && proc->op_Q && annot->ap)
+	if (proc->op_q && proc->op_cm && proc->op_Do_form && proc->op_Q)
 	{
-		fz_matrix matrix = pdf_annot_transform(ctx, annot);
+		pdf_obj *ap = pdf_annot_ap(ctx, annot);
+		fz_matrix matrix;
+
+		if (!ap)
+			return;
+
+		matrix = pdf_annot_transform(ctx, annot);
 		proc->op_q(ctx, proc);
 		proc->op_cm(ctx, proc,
 			matrix.a, matrix.b,
 			matrix.c, matrix.d,
 			matrix.e, matrix.f);
-		proc->op_Do_form(ctx, proc, NULL, annot->ap, pdf_page_resources(ctx, page));
+		proc->op_Do_form(ctx, proc, NULL, ap, pdf_page_resources(ctx, annot->page));
 		proc->op_Q(ctx, proc);
 	}
 }

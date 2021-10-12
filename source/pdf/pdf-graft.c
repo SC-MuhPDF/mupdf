@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
@@ -196,4 +218,73 @@ pdf_graft_mapped_object(fz_context *ctx, pdf_graft_map *map, pdf_obj *obj)
 		assert("This never happens" == NULL);
 		return NULL;
 	}
+}
+
+void pdf_graft_mapped_page(fz_context *ctx, pdf_graft_map *map, int page_to, pdf_document *src, int page_from)
+{
+	pdf_obj *page_ref;
+	pdf_obj *page_dict = NULL;
+	pdf_obj *obj;
+	pdf_obj *ref = NULL;
+	int i;
+	pdf_document *dst = map->dst;
+
+	/* Copy as few key/value pairs as we can. Do not include items that reference other pages. */
+	static pdf_obj * const copy_list[] = {
+		PDF_NAME(Contents),
+		PDF_NAME(Resources),
+		PDF_NAME(MediaBox),
+		PDF_NAME(CropBox),
+		PDF_NAME(BleedBox),
+		PDF_NAME(TrimBox),
+		PDF_NAME(ArtBox),
+		PDF_NAME(Rotate),
+		PDF_NAME(UserUnit)
+	};
+
+	fz_var(ref);
+	fz_var(page_dict);
+
+	fz_try(ctx)
+	{
+		page_ref = pdf_lookup_page_obj(ctx, src, page_from);
+
+		/* Make a new page object dictionary to hold the items we copy from the source page. */
+		page_dict = pdf_new_dict(ctx, dst, 4);
+
+		pdf_dict_put(ctx, page_dict, PDF_NAME(Type), PDF_NAME(Page));
+
+		for (i = 0; i < (int)nelem(copy_list); i++)
+		{
+			obj = pdf_dict_get_inheritable(ctx, page_ref, copy_list[i]);
+			if (obj != NULL)
+				pdf_dict_put_drop(ctx, page_dict, copy_list[i], pdf_graft_mapped_object(ctx, map, obj));
+		}
+
+		/* Add the page object to the destination document. */
+		ref = pdf_add_object(ctx, dst, page_dict);
+
+		/* Insert it into the page tree. */
+		pdf_insert_page(ctx, dst, page_to, ref);
+	}
+	fz_always(ctx)
+	{
+		pdf_drop_obj(ctx, page_dict);
+		pdf_drop_obj(ctx, ref);
+	}
+	fz_catch(ctx)
+	{
+		fz_rethrow(ctx);
+	}
+}
+
+void pdf_graft_page(fz_context *ctx, pdf_document *dst, int page_to, pdf_document *src, int page_from)
+{
+	pdf_graft_map *map = pdf_new_graft_map(ctx, dst);
+	fz_try(ctx)
+		pdf_graft_mapped_page(ctx, map, page_to, src, page_from);
+	fz_always(ctx)
+		pdf_drop_graft_map(ctx, map);
+	fz_catch(ctx)
+		fz_rethrow(ctx);
 }

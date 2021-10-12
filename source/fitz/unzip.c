@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 
 #include <string.h>
@@ -139,9 +161,6 @@ static void read_zip_dir_imp(fz_context *ctx, fz_zip_archive *zip, int64_t start
 			(void) fz_read_uint16_le(ctx, file); /* int file atts */
 			(void) fz_read_uint32_le(ctx, file); /* ext file atts */
 			offset = fz_read_uint32_le(ctx, file);
-
-			if (namesize < 0 || metasize < 0 || commentsize < 0)
-				fz_throw(ctx, FZ_ERROR_GENERIC, "invalid size in zip entry");
 
 			name = Memento_label(fz_malloc(ctx, namesize + 1), "zip_name");
 
@@ -298,7 +317,7 @@ static fz_buffer *read_zip_entry(fz_context *ctx, fz_archive *arch, const char *
 	fz_zip_archive *zip = (fz_zip_archive *) arch;
 	fz_stream *file = zip->super.file;
 	fz_buffer *ubuf;
-	unsigned char *cbuf;
+	unsigned char *cbuf = NULL;
 	int method;
 	z_stream z;
 	int code;

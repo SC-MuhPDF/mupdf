@@ -1,51 +1,24 @@
-var mupdf = {};
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
 
 Module.noExitRuntime = true;
 Module.noInitialRun = true;
-
-Module.onRuntimeInitialized = function () {
-	Module.ccall('initContext');
-	mupdf.openDocument = Module.cwrap('openDocument', 'number', ['string']);
-	mupdf.freeDocument = Module.cwrap('freeDocument', 'null', ['number']);
-	mupdf.documentTitle = Module.cwrap('documentTitle', 'string', ['number']);
-	mupdf.countPages = Module.cwrap('countPages', 'number', ['number']);
-	mupdf.pageWidth = Module.cwrap('pageWidth', 'number', ['number', 'number', 'number']);
-	mupdf.pageHeight = Module.cwrap('pageHeight', 'number', ['number', 'number', 'number']);
-	mupdf.pageLinks = Module.cwrap('pageLinks', 'string', ['number', 'number', 'number']);
-	mupdf.drawPageAsPNG = Module.cwrap('drawPageAsPNG', 'string', ['number', 'number', 'number']);
-	mupdf.drawPageAsHTML = Module.cwrap('drawPageAsHTML', 'string', ['number', 'number']);
-	mupdf.drawPageAsSVG = Module.cwrap('drawPageAsSVG', 'string', ['number', 'number']);
-	mupdf.loadOutline = Module.cwrap('loadOutline', 'number', ['number']);
-	mupdf.freeOutline = Module.cwrap('freeOutline', null, ['number']);
-	mupdf.outlineTitle = Module.cwrap('outlineTitle', 'string', ['number']);
-	mupdf.outlinePage = Module.cwrap('outlinePage', 'number', ['number']);
-	mupdf.outlineDown = Module.cwrap('outlineDown', 'number', ['number']);
-	mupdf.outlineNext = Module.cwrap('outlineNext', 'number', ['number']);
-};
-
-mupdf.documentOutline = function (doc) {
-	function makeOutline(node) {
-		var ul = document.createElement('ul');
-		while (node) {
-			var li = document.createElement('li');
-			var a = document.createElement('a');
-			a.href = '#page' + mupdf.outlinePage(node);
-			a.textContent = mupdf.outlineTitle(node);
-			li.appendChild(a);
-			var down = mupdf.outlineDown(node);
-			if (down) {
-				li.appendChild(makeOutline(down));
-			}
-			ul.appendChild(li);
-			node = mupdf.outlineNext(node);
-		}
-		return ul;
-	}
-	var root = mupdf.loadOutline(doc);
-	if (root) {
-		var ul = makeOutline(root);
-		mupdf.freeOutline(root);
-		return ul;
-	}
-	return null;
-}

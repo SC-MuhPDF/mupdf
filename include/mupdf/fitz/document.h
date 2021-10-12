@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #ifndef MUPDF_FITZ_DOCUMENT_H
 #define MUPDF_FITZ_DOCUMENT_H
 
@@ -250,6 +272,12 @@ typedef fz_separations *(fz_page_separations_fn)(fz_context *ctx, fz_page *page)
 */
 typedef int (fz_page_uses_overprint_fn)(fz_context *ctx, fz_page *page);
 
+
+/**
+	Type for a function to create a link on a page.
+*/
+typedef fz_link *(fz_page_create_link_fn)(fz_context *ctx, fz_page *page, fz_rect bbox, const char *uri);
+
 /**
 	Function type to open a document from a file.
 
@@ -308,6 +336,12 @@ typedef fz_document *(fz_document_open_accel_with_stream_fn)(fz_context *ctx, fz
 	is that this is of the required type.
 */
 typedef int (fz_document_recognize_fn)(fz_context *ctx, const char *magic);
+
+/**
+	Type for a function to be called when processing an already opened page.
+	See fz_process_opened_pages.
+*/
+typedef void *(fz_process_opened_page_fn)(fz_context *ctx, fz_page *page, void *state);
 
 /**
 	Register a handler for a document type.
@@ -581,9 +615,9 @@ fz_link *fz_load_links(fz_context *ctx, fz_page *page);
 	fz_page. This macro allocates such derived structures, and
 	initialises the base sections.
 */
-fz_page *fz_new_page_of_size(fz_context *ctx, int size);
-#define fz_new_derived_page(CTX,TYPE) \
-	((TYPE *)Memento_label(fz_new_page_of_size(CTX,sizeof(TYPE)),#TYPE))
+fz_page *fz_new_page_of_size(fz_context *ctx, int size, fz_document *doc);
+#define fz_new_derived_page(CTX,TYPE,DOC) \
+	((TYPE *)Memento_label(fz_new_page_of_size(CTX,sizeof(TYPE),DOC),#TYPE))
 
 /**
 	Determine the size of a page at 72 dpi.
@@ -652,6 +686,14 @@ void fz_run_page_widgets(fz_context *ctx, fz_page *page, fz_device *dev, fz_matr
 fz_page *fz_keep_page(fz_context *ctx, fz_page *page);
 
 /**
+	Increment the reference count for the page. Returns the same
+	pointer. Must only be used when the alloc lock is already taken.
+
+	Never throws exceptions.
+*/
+fz_page *fz_keep_page_locked(fz_context *ctx, fz_page *page);
+
+/**
 	Decrements the reference count for the page. When the reference
 	count hits 0, the page and its references are freed.
 
@@ -704,9 +746,9 @@ int fz_has_permission(fz_context *ctx, fz_document *doc, fz_permission p);
 
 	size: Size of 'buf'.
 
-	Returns the size of the output string (may be larger than 'size'
-	if the output was truncated), or -1 if the key is not recognized
-	or found.
+	Returns the number of bytes need to store the string plus terminator
+	(will be larger than 'size' if the output was truncated), or -1 if the
+	key is not recognized or found.
 */
 int fz_lookup_metadata(fz_context *ctx, fz_document *doc, const char *key, char *buf, int size);
 
@@ -715,10 +757,15 @@ int fz_lookup_metadata(fz_context *ctx, fz_document *doc, const char *key, char 
 
 #define FZ_META_INFO_AUTHOR "info:Author"
 #define FZ_META_INFO_TITLE "info:Title"
+#define FZ_META_INFO_CREATOR "info:Creator"
+#define FZ_META_INFO_PRODUCER "info:Producer"
 
 /**
 	Find the output intent colorspace if the document has defined
 	one.
+
+	Returns a borrowed reference that should not be dropped, unless
+	it is kept first.
 */
 fz_colorspace *fz_document_output_intent(fz_context *ctx, fz_document *doc);
 
@@ -737,6 +784,25 @@ fz_separations *fz_page_separations(fz_context *ctx, fz_page *page);
 */
 int fz_page_uses_overprint(fz_context *ctx, fz_page *page);
 
+/**
+	Create a new link on a page.
+*/
+fz_link *fz_create_link(fz_context *ctx, fz_page *page, fz_rect bbox, const char *uri);
+
+/**
+	Iterates over all opened pages of the document, calling the
+	provided callback for each page for processing. If the callback
+	returns non-NULL then the iteration stops and that value is returned
+	to the called of fz_process_opened_pages().
+
+	The state pointer provided to fz_process_opened_pages() is
+	passed on to the callback but is owned by the caller.
+
+	Returns the first non-NULL value returned by the callback,
+	or NULL if the callback returned NULL for all opened pages.
+*/
+void *fz_process_opened_pages(fz_context *ctx, fz_document *doc, fz_process_opened_page_fn *process_openend_page, void *state);
+
 /* Implementation details: subject to change. */
 
 /**
@@ -746,6 +812,7 @@ int fz_page_uses_overprint(fz_context *ctx, fz_page *page);
 struct fz_page
 {
 	int refs;
+	fz_document *doc; /* reference to parent document */
 	int chapter; /* chapter number */
 	int number; /* page number in chapter */
 	int incomplete; /* incomplete from progressive loading; don't cache! */
@@ -760,6 +827,7 @@ struct fz_page
 	fz_page_separation_disabled_fn *separation_disabled;
 	fz_page_separations_fn *separations;
 	fz_page_uses_overprint_fn *overprint;
+	fz_page_create_link_fn *create_link;
 	fz_page **prev, *next; /* linked list of currently open pages */
 };
 
@@ -802,6 +870,5 @@ struct fz_document_handler
 	fz_document_open_accel_fn *open_accel;
 	fz_document_open_accel_with_stream_fn *open_accel_with_stream;
 };
-
 
 #endif

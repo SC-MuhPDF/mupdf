@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 
 #include <string.h>
@@ -107,7 +129,8 @@ fz_show_glyph(fz_context *ctx, fz_text *text, fz_font *font, fz_matrix trm, int 
 }
 
 fz_matrix
-fz_show_string(fz_context *ctx, fz_text *text, fz_font *user_font, fz_matrix trm, const char *s, int wmode, int bidi_level, fz_bidi_direction markup_dir, fz_text_language language)
+fz_show_string(fz_context *ctx, fz_text *text, fz_font *user_font, fz_matrix trm, const char *s,
+	int wmode, int bidi_level, fz_bidi_direction markup_dir, fz_text_language language)
 {
 	fz_font *font;
 	int gid, ucs;
@@ -118,6 +141,28 @@ fz_show_string(fz_context *ctx, fz_text *text, fz_font *user_font, fz_matrix trm
 		s += fz_chartorune(&ucs, s);
 		gid = fz_encode_character_with_fallback(ctx, user_font, ucs, 0, language, &font);
 		fz_show_glyph(ctx, text, font, trm, gid, ucs, wmode, bidi_level, markup_dir, language);
+		adv = fz_advance_glyph(ctx, font, gid, wmode);
+		if (wmode == 0)
+			trm = fz_pre_translate(trm, adv, 0);
+		else
+			trm = fz_pre_translate(trm, 0, -adv);
+	}
+
+	return trm;
+}
+
+fz_matrix
+fz_measure_string(fz_context *ctx, fz_font *user_font, fz_matrix trm, const char *s,
+	int wmode, int bidi_level, fz_bidi_direction markup_dir, fz_text_language language)
+{
+	fz_font *font;
+	int gid, ucs;
+	float adv;
+
+	while (*s)
+	{
+		s += fz_chartorune(&ucs, s);
+		gid = fz_encode_character_with_fallback(ctx, user_font, ucs, 0, language, &font);
 		adv = fz_advance_glyph(ctx, font, gid, wmode);
 		if (wmode == 0)
 			trm = fz_pre_translate(trm, adv, 0);

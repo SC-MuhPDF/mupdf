@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 
 #include "color-imp.h"
@@ -204,7 +226,7 @@ fz_lookup_fast_color_converter(fz_context *ctx, fz_colorspace *ss, fz_colorspace
 
 /* Fast pixmap color conversions */
 
-static void fast_gray_to_rgb(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_gray_to_rgb(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -338,7 +360,7 @@ static void fast_gray_to_rgb(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, in
 	}
 }
 
-static void fast_gray_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_gray_to_cmyk(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -415,7 +437,7 @@ static void fast_gray_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, i
 	}
 }
 
-static void fast_rgb_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_rgb_to_gray(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -539,7 +561,7 @@ static void fast_rgb_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, in
 	}
 }
 
-static void fast_bgr_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_bgr_to_gray(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -666,7 +688,7 @@ static void fast_bgr_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, in
 	}
 }
 
-static void fast_rgb_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_rgb_to_cmyk(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -753,7 +775,7 @@ static void fast_rgb_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, in
 	}
 }
 
-static void fast_bgr_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_bgr_to_cmyk(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -840,7 +862,7 @@ static void fast_bgr_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, in
 	}
 }
 
-static void fast_cmyk_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_cmyk_to_gray(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -917,7 +939,7 @@ static void fast_cmyk_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, i
 	}
 }
 
-static void fast_cmyk_to_rgb(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_cmyk_to_rgb(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -1000,7 +1022,7 @@ static void fast_cmyk_to_rgb(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, in
 	}
 }
 
-static void fast_cmyk_to_bgr(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_cmyk_to_bgr(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -1083,7 +1105,7 @@ static void fast_cmyk_to_bgr(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, in
 	}
 }
 
-static void fast_rgb_to_bgr(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_rgb_to_bgr(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -1211,7 +1233,7 @@ static void fast_rgb_to_bgr(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int
 	}
 }
 
-static void fast_gray_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_gray_to_gray(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -1329,7 +1351,7 @@ static void fast_gray_to_gray(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, i
 	}
 }
 
-static void fast_rgb_to_rgb(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_rgb_to_rgb(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -1457,7 +1479,7 @@ static void fast_rgb_to_rgb(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int
 	}
 }
 
-static void fast_cmyk_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+static void fast_cmyk_to_cmyk(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	unsigned char *s = src->samples;
 	unsigned char *d = dst->samples;
@@ -1591,7 +1613,7 @@ static void fast_cmyk_to_cmyk(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, i
 }
 
 void
-fz_fast_any_to_alpha(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+fz_fast_any_to_alpha(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	if (!src->alpha)
 		fz_clear_pixmap_with_value(ctx, dst, 255);
@@ -1630,7 +1652,7 @@ fz_fast_any_to_alpha(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_s
 }
 
 void
-fz_convert_fast_pixmap_samples(fz_context *ctx, fz_pixmap *src, fz_pixmap *dst, int copy_spots)
+fz_convert_fast_pixmap_samples(fz_context *ctx, const fz_pixmap *src, fz_pixmap *dst, int copy_spots)
 {
 	fz_colorspace *ss = src->colorspace;
 	fz_colorspace *ds = dst->colorspace;

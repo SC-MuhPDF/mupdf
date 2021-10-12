@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 /*
  * muconvert -- command line tool for converting documents
  */
@@ -26,7 +48,7 @@ static fz_document *doc;
 static fz_document_writer *out;
 static int count;
 
-static void usage(void)
+static int usage(void)
 {
 	fprintf(stderr,
 		"mutool convert version " FZ_VERSION "\n"
@@ -60,7 +82,7 @@ static void usage(void)
 	fputs(fz_pdf_write_options_usage, stderr);
 #endif
 	fputs(fz_svg_write_options_usage, stderr);
-	exit(1);
+	return 1;
 }
 
 static void runpage(int number)
@@ -106,12 +128,13 @@ static void runrange(const char *range)
 int muconvert_main(int argc, char **argv)
 {
 	int i, c;
+	int retval = EXIT_SUCCESS;
 
 	while ((c = fz_getopt(argc, argv, "p:A:W:H:S:U:Xo:F:O:")) != -1)
 	{
 		switch (c)
 		{
-		default: usage(); break;
+		default: return usage();
 
 		case 'p': password = fz_optarg; break;
 		case 'A': alphabits = atoi(fz_optarg); break;
@@ -128,7 +151,7 @@ int muconvert_main(int argc, char **argv)
 	}
 
 	if (fz_optind == argc || (!format && !output))
-		usage();
+		return usage();
 
 	/* Create a context to hold the exception stack and various caches. */
 	ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED);
@@ -169,26 +192,34 @@ int muconvert_main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	for (i = fz_optind; i < argc; ++i)
+	fz_try(ctx)
 	{
-		doc = fz_open_document(ctx, argv[i]);
-		if (fz_needs_password(ctx, doc))
-			if (!fz_authenticate_password(ctx, doc, password))
-				fz_throw(ctx, FZ_ERROR_GENERIC, "cannot authenticate password: %s", argv[i]);
-		fz_layout_document(ctx, doc, layout_w, layout_h, layout_em);
-		count = fz_count_pages(ctx, doc);
+		for (i = fz_optind; i < argc; ++i)
+		{
+			doc = fz_open_document(ctx, argv[i]);
+			if (fz_needs_password(ctx, doc))
+				if (!fz_authenticate_password(ctx, doc, password))
+					fz_throw(ctx, FZ_ERROR_GENERIC, "cannot authenticate password: %s", argv[i]);
+			fz_layout_document(ctx, doc, layout_w, layout_h, layout_em);
+			count = fz_count_pages(ctx, doc);
 
-		if (i+1 < argc && fz_is_page_range(ctx, argv[i+1]))
-			runrange(argv[++i]);
-		else
-			runrange("1-N");
+			if (i+1 < argc && fz_is_page_range(ctx, argv[i+1]))
+				runrange(argv[++i]);
+			else
+				runrange("1-N");
 
-		fz_drop_document(ctx, doc);
+			fz_drop_document(ctx, doc);
+			doc = NULL;
+		}
 	}
+	fz_always(ctx)
+		fz_drop_document(ctx, doc);
+	fz_catch(ctx)
+		retval = EXIT_FAILURE;
 
 	fz_close_document_writer(ctx, out);
 
 	fz_drop_document_writer(ctx, out);
 	fz_drop_context(ctx);
-	return EXIT_SUCCESS;
+	return retval;
 }

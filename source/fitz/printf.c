@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 
 #include <float.h>
@@ -189,11 +211,57 @@ static void fmtint64(struct fmtbuf *out, int64_t value, int s, int z, int w, int
 	fmtuint64(out, a, s, z, w, base);
 }
 
-static void fmtquote(struct fmtbuf *out, const char *s, int sq, int eq)
+static void fmtquote(struct fmtbuf *out, const char *s, int sq, int eq, int verbatim)
+{
+	int i, n, c;
+	fmtputc(out, sq);
+	while (*s != 0) {
+		n = fz_chartorune(&c, s);
+		switch (c) {
+		default:
+			if (c < 32) {
+				fmtputc(out, '\\');
+				fmtputc(out, 'x');
+				fmtputc(out, "0123456789ABCDEF"[(c>>4)&15]);
+				fmtputc(out, "0123456789ABCDEF"[(c)&15]);
+			} else if (c > 127) {
+				if (verbatim)
+				{
+					for (i = 0; i < n; ++i)
+						fmtputc(out, s[i]);
+				}
+				else
+				{
+					fmtputc(out, '\\');
+					fmtputc(out, 'u');
+					fmtputc(out, "0123456789ABCDEF"[(c>>12)&15]);
+					fmtputc(out, "0123456789ABCDEF"[(c>>8)&15]);
+					fmtputc(out, "0123456789ABCDEF"[(c>>4)&15]);
+					fmtputc(out, "0123456789ABCDEF"[(c)&15]);
+				}
+			} else {
+				if (c == sq || c == eq)
+					fmtputc(out, '\\');
+				fmtputc(out, c);
+			}
+			break;
+		case '\\': fmtputc(out, '\\'); fmtputc(out, '\\'); break;
+		case '\b': fmtputc(out, '\\'); fmtputc(out, 'b'); break;
+		case '\f': fmtputc(out, '\\'); fmtputc(out, 'f'); break;
+		case '\n': fmtputc(out, '\\'); fmtputc(out, 'n'); break;
+		case '\r': fmtputc(out, '\\'); fmtputc(out, 'r'); break;
+		case '\t': fmtputc(out, '\\'); fmtputc(out, 't'); break;
+		}
+		s += n;
+	}
+	fmtputc(out, eq);
+}
+
+static void fmtquote_pdf(struct fmtbuf *out, const char *s, int sq, int eq)
 {
 	int c;
 	fmtputc(out, sq);
-	while ((c = *s++) != 0) {
+	while ((c = (unsigned char)*s++) != 0) {
 		switch (c) {
 		default:
 			if (c < 32 || c > 127) {
@@ -420,6 +488,7 @@ fz_format_string(fz_context *ctx, void *user, void (*emit)(fz_context *ctx, void
 				}
 				break;
 			case 'd':
+			case 'i':
 				if (bits == 64)
 				{
 					i64 = va_arg(args, int64_t);
@@ -451,15 +520,20 @@ fz_format_string(fz_context *ctx, void *user, void (*emit)(fz_context *ctx, void
 				while ((c = *str++) != 0)
 					fmtputc(&out, c);
 				break;
+			case 'Q': /* quoted string (with verbatim unicode) */
+				str = va_arg(args, const char*);
+				if (!str) str = "";
+				fmtquote(&out, str, '"', '"', 1);
+				break;
 			case 'q': /* quoted string */
 				str = va_arg(args, const char*);
 				if (!str) str = "";
-				fmtquote(&out, str, '"', '"');
+				fmtquote(&out, str, '"', '"', 0);
 				break;
 			case '(': /* pdf string */
 				str = va_arg(args, const char*);
 				if (!str) str = "";
-				fmtquote(&out, str, '(', ')');
+				fmtquote_pdf(&out, str, '(', ')');
 				break;
 			case 'n': /* pdf name */
 				str = va_arg(args, const char*);

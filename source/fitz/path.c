@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 
 #include <string.h>
@@ -58,6 +80,19 @@ typedef struct
 	uint8_t cmd_len;
 } fz_packed_path;
 
+/*
+	Paths are created UNPACKED. That means we have a fz_path
+	structure with coords and cmds pointing to malloced blocks.
+
+	After they have been completely constructed, callers may choose
+	to 'pack' them into some target block of memory. If if coord_len
+	and cmd_len are both < 256, then they are PACKED_FLAT into an
+	fz_packed_path with the coords and cmds in the bytes afterwards,
+	all inside the target block. If they cannot be accomodated in
+	that way, then they are PACKED_OPEN, where an fz_path is put
+	into the target block, and cmds and coords remain pointers to
+	allocated blocks.
+*/
 enum
 {
 	FZ_PATH_UNPACKED = 0,
@@ -147,8 +182,25 @@ fz_pack_path(fz_context *ctx, uint8_t *pack_, size_t max, const fz_path *path)
 	uint8_t *ptr;
 	size_t size;
 
-	if (path->packed)
-		fz_throw(ctx, FZ_ERROR_GENERIC, "Can't repack a packed path");
+	if (path->packed == FZ_PATH_PACKED_FLAT)
+	{
+		fz_packed_path *pack = (fz_packed_path *)path;
+		fz_packed_path *out = (fz_packed_path *)pack_;
+		size = sizeof(fz_packed_path) + sizeof(float) * pack->coord_len + sizeof(uint8_t) * pack->cmd_len;
+
+		if (size > max)
+			fz_throw(ctx, FZ_ERROR_GENERIC, "Can't pack a path that small!");
+
+		if (out)
+		{
+			out->refs = 1;
+			out->packed = FZ_PATH_PACKED_FLAT;
+			out->coord_len = pack->coord_len;
+			out->cmd_len = pack->cmd_len;
+			memcpy(&out[1], &pack[1], size - sizeof(*out));
+		}
+		return size;
+	}
 
 	size = sizeof(fz_packed_path) + sizeof(float) * path->coord_len + sizeof(uint8_t) * path->cmd_len;
 

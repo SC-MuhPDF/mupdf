@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 /*
  * muraster -- Convert a document to a raster file.
  *
@@ -481,7 +503,7 @@ static struct {
 
 #define stringify(A) #A
 
-static void usage(void)
+static int usage(void)
 {
 	fprintf(stderr,
 		"muraster version " FZ_VERSION "\n"
@@ -520,7 +542,7 @@ static void usage(void)
 		"\n"
 		"\tpages\tcomma separated list of page numbers and ranges\n"
 		);
-	exit(1);
+	return 1;
 }
 
 static int gettime(void)
@@ -716,7 +738,7 @@ static int dodrawpage(fz_context *ctx, int pagenum, fz_cookie *cookie, render_de
 }
 
 /* This functions tries to render a page, falling back repeatedly to try and make it work. */
-static int try_render_page(fz_context *ctx, int pagenum, fz_cookie *cookie, int start, int interptime, char *filename, int bg, int solo, render_details *render)
+static int try_render_page(fz_context *ctx, int pagenum, fz_cookie *cookie, int start, int interptime, char *fname, int bg, int solo, render_details *render)
 {
 	int status;
 
@@ -796,14 +818,14 @@ static int try_render_page(fz_context *ctx, int pagenum, fz_cookie *cookie, int 
 				timing.min = diff + interptime;
 				timing.mininterp = interptime;
 				timing.minpage = pagenum;
-				timing.minfilename = filename;
+				timing.minfilename = fname;
 			}
 			if (diff + interptime > timing.max)
 			{
 				timing.max = diff + interptime;
 				timing.maxinterp = interptime;
 				timing.maxpage = pagenum;
-				timing.maxfilename = filename;
+				timing.maxfilename = fname;
 			}
 			timing.total += diff + interptime;
 			timing.count ++;
@@ -816,13 +838,13 @@ static int try_render_page(fz_context *ctx, int pagenum, fz_cookie *cookie, int 
 			{
 				timing.min = diff;
 				timing.minpage = pagenum;
-				timing.minfilename = filename;
+				timing.minfilename = fname;
 			}
 			if (diff > timing.max)
 			{
 				timing.max = diff;
 				timing.maxpage = pagenum;
-				timing.maxfilename = filename;
+				timing.maxfilename = fname;
 			}
 			timing.total += diff;
 			timing.count ++;
@@ -977,7 +999,7 @@ initialise_banding(fz_context *ctx, render_details *render, int color)
 	}
 
 	w = render->ibounds.x1 - render->ibounds.x0;
-	min_band_mem = bpp * w * min_band_height;
+	min_band_mem = (size_t)bpp * w * min_band_height;
 	reps = (int)(max_band_memory / min_band_mem);
 	if (reps < 1)
 		reps = 1;
@@ -1333,19 +1355,21 @@ trace_realloc(void *arg, void *p_, size_t size)
 static void worker_thread(void *arg)
 {
 	worker_t *me = (worker_t *)arg;
+	int band_start;
 
 	do
 	{
 		DEBUG_THREADS(("Worker %d waiting\n", me->num));
 		mu_wait_semaphore(&me->start);
+		band_start = me->band_start;
 		DEBUG_THREADS(("Worker %d woken for band_start %d\n", me->num, me->band_start));
 		me->status = RENDER_OK;
-		if (me->band_start >= 0)
-			me->status = drawband(me->ctx, NULL, me->list, me->ctm, me->tbounds, &me->cookie, me->band_start, me->pix, &me->bit);
-		DEBUG_THREADS(("Worker %d completed band_start %d (status=%d)\n", me->num, me->band_start, me->status));
+		if (band_start >= 0)
+			me->status = drawband(me->ctx, NULL, me->list, me->ctm, me->tbounds, &me->cookie, band_start, me->pix, &me->bit);
+		DEBUG_THREADS(("Worker %d completed band_start %d (status=%d)\n", me->num, band_start, me->status));
 		mu_trigger_semaphore(&me->stop);
 	}
-	while (me->band_start >= 0);
+	while (band_start >= 0);
 }
 
 static void bgprint_worker(void *arg)
@@ -1440,7 +1464,7 @@ int main(int argc, char **argv)
 	{
 		switch (c)
 		{
-		default: usage(); break;
+		default: return usage();
 
 		case 'p': password = fz_optarg; break;
 
@@ -1504,7 +1528,7 @@ int main(int argc, char **argv)
 		height = y_resolution * PAPER_HEIGHT;
 
 	if (fz_optind == argc)
-		usage();
+		return usage();
 
 	if (min_band_height <= 0)
 	{

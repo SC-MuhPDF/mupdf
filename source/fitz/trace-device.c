@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 
 typedef struct
@@ -35,12 +57,6 @@ fz_trace_color(fz_context *ctx, fz_output *out, fz_colorspace *colorspace, const
 		fz_write_printf(ctx, out, " alpha=\"%g\"", alpha);
 }
 
-static int
-isxmlmeta(int c)
-{
-	return c < 32 || c >= 128 || c == '&' || c == '<' || c == '>' || c == '\'' || c == '"';
-}
-
 static void
 fz_trace_text_span(fz_context *ctx, fz_output *out, fz_text_span *span, int depth)
 {
@@ -50,28 +66,44 @@ fz_trace_text_span(fz_context *ctx, fz_output *out, fz_text_span *span, int dept
 	fz_write_printf(ctx, out, " trm=\"%g %g %g %g\">\n", span->trm.a, span->trm.b, span->trm.c, span->trm.d);
 	for (i = 0; i < span->len; i++)
 	{
-		char name[32];
+		int ucs = span->items[i].ucs;
+		float adv = 0;
+		if (span->items[i].gid >= 0) {
+			adv = fz_advance_glyph(ctx, span->font, span->items[i].gid, span->wmode);
+		}
 
 		fz_trace_indent(ctx, out, depth+1);
-		if (span->items[i].ucs == -1)
-			fz_write_printf(ctx, out, "<g unicode=\"-1\"");
-		else if (!isxmlmeta(span->items[i].ucs))
-			fz_write_printf(ctx, out, "<g unicode=\"%c\"", span->items[i].ucs);
-		else
-			fz_write_printf(ctx, out, "<g unicode=\"U+%04x\"", span->items[i].ucs);
-
+		fz_write_string(ctx, out, "<g");
+		if (span->items[i].ucs >= 0)
+		{
+			fz_write_string(ctx, out, " unicode=\"");
+			switch (ucs)
+			{
+			default:
+				if (ucs < 32)
+					fz_write_printf(ctx, out, "&#x%x;", ucs);
+				else
+					fz_write_rune(ctx, out, ucs);
+				break;
+			case '&': fz_write_string(ctx, out, "&amp;"); break;
+			case '\'': fz_write_string(ctx, out, "&apos;"); break;
+			case '"': fz_write_string(ctx, out, "&quot;"); break;
+			case '<': fz_write_string(ctx, out, "&lt;"); break;
+			case '>': fz_write_string(ctx, out, "&gt;"); break;
+			}
+			fz_write_string(ctx, out, "\"");
+		}
 		if (span->items[i].gid >= 0)
 		{
+			char name[32];
 			fz_get_glyph_name(ctx, span->font, span->items[i].gid, name, sizeof name);
 			fz_write_printf(ctx, out, " glyph=\"%s\"", name);
 		}
-		else
-			fz_write_printf(ctx, out, " glyph=\"-1\"");
 
-		fz_write_printf(ctx, out, " x=\"%g\" y=\"%g\" />\n", span->items[i].x, span->items[i].y);
+		fz_write_printf(ctx, out, " x=\"%g\" y=\"%g\" adv=\"%g\"/>\n", span->items[i].x, span->items[i].y, adv);
 	}
 	fz_trace_indent(ctx, out, depth);
-	fz_write_printf(ctx, out, "</span>\n");
+	fz_write_string(ctx, out, "</span>\n");
 }
 
 static void

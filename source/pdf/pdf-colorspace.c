@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"
 
@@ -99,6 +121,8 @@ load_devicen(fz_context *ctx, pdf_obj *array, int is_devn)
 	char name[100];
 	int i, n;
 
+	fz_var(cs);
+
 	if (pdf_is_array(ctx, nameobj))
 	{
 		n = pdf_array_len(ctx, nameobj);
@@ -182,7 +206,7 @@ load_indexed(fz_context *ctx, pdf_obj *array)
 
 		high = pdf_to_int(ctx, highobj);
 		high = fz_clampi(high, 0, 255);
-		n = base->n * (high + 1);
+		n = (size_t)base->n * (high + 1);
 		lookup = Memento_label(fz_malloc(ctx, n), "cs_lookup");
 
 		if (pdf_is_string(ctx, lookupobj))

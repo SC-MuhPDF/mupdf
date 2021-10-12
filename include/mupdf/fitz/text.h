@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #ifndef MUPDF_FITZ_TEXT_H
 #define MUPDF_FITZ_TEXT_H
 
@@ -125,16 +147,24 @@ void fz_show_glyph(fz_context *ctx, fz_text *text, fz_font *font, fz_matrix trm,
 
 	bidi_level: The bidirectional level for this glyph.
 
-	markup_dir: The direction of the text as specified in the
-	markup.
+	markup_dir: The direction of the text as specified in the markup.
 
 	language: The language in use (if known, 0 otherwise)
-	(e.g. FZ_LANG_zh_Hans).
+		(e.g. FZ_LANG_zh_Hans).
 
 	Returns the transform updated with the advance width of the
 	string.
 */
 fz_matrix fz_show_string(fz_context *ctx, fz_text *text, fz_font *font, fz_matrix trm, const char *s, int wmode, int bidi_level, fz_bidi_direction markup_dir, fz_text_language language);
+
+/**
+	Measure the advance width of a UTF8 string should it be added to a text object.
+
+	This uses the same layout algorithms as fz_show_string, and can be used
+	to calculate text alignment adjustments.
+*/
+fz_matrix
+fz_measure_string(fz_context *ctx, fz_font *user_font, fz_matrix trm, const char *s, int wmode, int bidi_level, fz_bidi_direction markup_dir, fz_text_language language);
 
 /**
 	Find the bounds of a given text object.

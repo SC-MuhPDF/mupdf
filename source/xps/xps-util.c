@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 #include "xps-imp.h"
 
@@ -34,30 +56,33 @@ skip_scheme(char *path)
 
 	/* Skip over: alpha *(alpha | digit | "+" | "-" | ".") looking for : */
 	if (*p >= 'a' && *p <= 'z')
-	{}
+	{
+		/* Starts with a-z */
+	}
 	else if (*p >= 'A' && *p <= 'Z')
-	{}
+	{
+		/* Starts with A-Z */
+	}
 	else
 		return path;
 
 	while (*++p)
 	{
 		if (*p >= 'a' && *p <= 'z')
-		{}
-		else if (*p >= 'A' && *p <= 'Z')
-		{}
-		else if (*p >= '0' && *p <= '9')
-		{}
-		else if (*p == '+')
-		{}
-		else if (*p == '-')
-		{}
-		else if (*p == '.')
-		{}
-		else if (*p == ':')
+			continue;
+		if (*p >= 'A' && *p <= 'Z')
+			continue;
+		if (*p >= '0' && *p <= '9')
+			continue;
+		if (*p == '+')
+			continue;
+		if (*p == '-')
+			continue;
+		if (*p == '.')
+			continue;
+		if (*p == ':')
 			return p+1;
-		else
-			break;
+		break;
 	}
 	return path;
 }

@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #ifndef MUPDF_FITZ_STRUCTURED_TEXT_H
 #define MUPDF_FITZ_STRUCTURED_TEXT_H
 
@@ -8,20 +30,21 @@
 #include "mupdf/fitz/image.h"
 #include "mupdf/fitz/output.h"
 #include "mupdf/fitz/device.h"
+#include "mupdf/fitz/document.h"
 
 /**
 	Simple text layout (for use with annotation editing primarily).
 */
 typedef struct fz_layout_char
 {
-	float x, w;
+	float x, advance;
 	const char *p; /* location in source text of character */
 	struct fz_layout_char *next;
 } fz_layout_char;
 
 typedef struct fz_layout_line
 {
-	float x, y, h;
+	float x, y, font_size;
 	const char *p; /* location in source text of start of line */
 	fz_layout_char *text;
 	struct fz_layout_line *next;
@@ -89,6 +112,16 @@ typedef struct fz_stext_block fz_stext_block;
 	FZ_STEXT_INHIBIT_SPACES: If this option is set, we will not try
 	to add missing space characters where there are large gaps
 	between characters.
+
+	FZ_STEXT_DEHYPHENATE: If this option is set, hyphens at the
+	end of a line will be removed and the lines will be merged.
+
+	FZ_STEXT_PRESERVE_SPANS: If this option is set, spans on the same line
+	will not be merged. Each line will thus be a span of text with the same
+	font, colour, and size.
+
+	FZ_STEXT_MEDIABOX_CLIP: If this option is set, characters entirely
+	outside each page's mediabox will be ignored.
 */
 enum
 {
@@ -96,6 +129,9 @@ enum
 	FZ_STEXT_PRESERVE_WHITESPACE = 2,
 	FZ_STEXT_PRESERVE_IMAGES = 4,
 	FZ_STEXT_INHIBIT_SPACES = 8,
+	FZ_STEXT_DEHYPHENATE = 16,
+	FZ_STEXT_PRESERVE_SPANS = 32,
+	FZ_STEXT_MEDIABOX_CLIP = 64,
 };
 
 /**
@@ -157,7 +193,7 @@ struct fz_stext_char
 	fz_stext_char *next;
 };
 
-extern const char *fz_stext_options_usage;
+FZ_DATA extern const char *fz_stext_options_usage;
 
 /**
 	Create an empty text page.
@@ -171,26 +207,31 @@ fz_stext_page *fz_new_stext_page(fz_context *ctx, fz_rect mediabox);
 void fz_drop_stext_page(fz_context *ctx, fz_stext_page *page);
 
 /**
-	Output a page to a file in HTML (visual) format.
+	Output structured text to a file in HTML (visual) format.
 */
 void fz_print_stext_page_as_html(fz_context *ctx, fz_output *out, fz_stext_page *page, int id);
 void fz_print_stext_header_as_html(fz_context *ctx, fz_output *out);
 void fz_print_stext_trailer_as_html(fz_context *ctx, fz_output *out);
 
 /**
-	Output a page to a file in XHTML (semantic) format.
+	Output structured text to a file in XHTML (semantic) format.
 */
 void fz_print_stext_page_as_xhtml(fz_context *ctx, fz_output *out, fz_stext_page *page, int id);
 void fz_print_stext_header_as_xhtml(fz_context *ctx, fz_output *out);
 void fz_print_stext_trailer_as_xhtml(fz_context *ctx, fz_output *out);
 
 /**
-	Output a page to a file in XML format.
+	Output structured text to a file in XML format.
 */
 void fz_print_stext_page_as_xml(fz_context *ctx, fz_output *out, fz_stext_page *page, int id);
 
 /**
-	Output a page to a file in UTF-8 format.
+	Output structured text to a file in JSON format.
+*/
+void fz_print_stext_page_as_json(fz_context *ctx, fz_output *out, fz_stext_page *page, float scale);
+
+/**
+	Output structured text to a file in plain-text UTF-8 format.
 */
 void fz_print_stext_page_as_text(fz_context *ctx, fz_output *out, fz_stext_page *page);
 
@@ -268,5 +309,50 @@ fz_stext_options *fz_parse_stext_options(fz_context *ctx, fz_stext_options *opts
 	options: Options to configure the stext device.
 */
 fz_device *fz_new_stext_device(fz_context *ctx, fz_stext_page *page, const fz_stext_options *options);
+
+/**
+	Create a device to OCR the text on the page.
+
+	Renders the page internally to a bitmap that is then OCRd. Text
+	is then forwarded onto the target device.
+
+	target: The target device to receive the OCRd text.
+
+	ctm: The transform to apply to the mediabox to get the size for
+	the rendered page image. Also used to calculate the resolution
+	for the page image. In general, this will be the same as the CTM
+	that you pass to fz_run_page (or fz_run_display_list) to feed
+	this device.
+
+	mediabox: The mediabox (in points). Combined with the CTM to get
+	the bounds of the pixmap used internally for the rendered page
+	image.
+
+	with_list: If with_list is false, then all non-text operations
+	are forwarded instantly to the target device. This results in
+	the target device seeing all NON-text operations, followed by
+	all the text operations (derived from OCR).
+
+	If with_list is true, then all the marking operations are
+	collated into a display list which is then replayed to the
+	target device at the end.
+
+	language: NULL (for "eng"), or a pointer to a string to describe
+	the languages/scripts that should be used for OCR (e.g.
+	"eng,ara").
+
+	progress: NULL, or function to be called periodically to indicate
+	progress. Return 0 to continue, or 1 to cancel. progress_arg is
+	returned as the void *. The int is a value between 0 and 100 to
+	indicate progress.
+
+	progress_arg: A void * value to be parrotted back to the progress
+	function.
+*/
+fz_device *fz_new_ocr_device(fz_context *ctx, fz_device *target, fz_matrix ctm, fz_rect mediabox, int with_list, const char *language,
+			int (*progress)(fz_context *, void *, int), void *progress_arg);
+
+fz_document *fz_open_reflowed_document(fz_context *ctx, fz_document *underdoc, const fz_stext_options *opts);
+
 
 #endif

@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 #include "mupdf/ucdn.h"
 #include "html-imp.h"
@@ -104,6 +126,7 @@ struct genstate
 	fz_html_font_set *set;
 	fz_archive *zip;
 	fz_tree *images;
+	fz_xml_doc *xml;
 	int is_fb2;
 	const char *base_uri;
 	fz_css *css;
@@ -396,6 +419,8 @@ static fz_image *load_html_image(fz_context *ctx, fz_archive *zip, const char *b
 			buf = fz_new_buffer_from_base64(ctx, src+23, 0);
 		else if (!strncmp(src, "data:image/png;base64,", 22))
 			buf = fz_new_buffer_from_base64(ctx, src+22, 0);
+		else if (!strncmp(src, "data:image/gif;base64,", 22))
+			buf = fz_new_buffer_from_base64(ctx, src+22, 0);
 		else
 		{
 			fz_strlcpy(path, base_uri, sizeof path);
@@ -420,11 +445,12 @@ static fz_image *load_html_image(fz_context *ctx, fz_archive *zip, const char *b
 	return img;
 }
 
-static fz_image *load_svg_image(fz_context *ctx, fz_archive *zip, const char *base_uri, fz_xml *xml)
+static fz_image *load_svg_image(fz_context *ctx, fz_archive *zip, const char *base_uri,
+	fz_xml_doc *xmldoc, fz_xml *node)
 {
 	fz_image *img = NULL;
 	fz_try(ctx)
-		img = fz_new_image_from_svg_xml(ctx, xml, base_uri, zip);
+		img = fz_new_image_from_svg_xml(ctx, xmldoc, node, base_uri, zip);
 	fz_catch(ctx)
 		fz_warn(ctx, "html: cannot load embedded svg document");
 	return img;
@@ -613,27 +639,6 @@ static fz_html_box *insert_table_cell_box(fz_context *ctx, fz_html_box *box, fz_
 	return top;
 }
 
-static fz_html_box *insert_break_box(fz_context *ctx, fz_html_box *box, fz_html_box *top)
-{
-	if (top->type == BOX_BLOCK)
-	{
-		insert_box(ctx, box, BOX_BREAK, top);
-	}
-	else if (top->type == BOX_FLOW)
-	{
-		while (top->type != BOX_BLOCK)
-			top = top->up;
-		insert_box(ctx, box, BOX_BREAK, top);
-	}
-	else if (top->type == BOX_INLINE)
-	{
-		while (top->type != BOX_BLOCK)
-			top = top->up;
-		insert_box(ctx, box, BOX_BREAK, top);
-	}
-	return top;
-}
-
 static void insert_inline_box(fz_context *ctx, fz_html_box *box, fz_html_box *top, int markup_dir, struct genstate *g)
 {
 	if (top->type == BOX_FLOW || top->type == BOX_INLINE)
@@ -675,7 +680,6 @@ generate_boxes(fz_context *ctx,
 	int markup_lang,
 	struct genstate *g)
 {
-	fz_css_match match;
 	fz_html_box *box, *last_top;
 	const char *tag;
 	int display;
@@ -683,13 +687,13 @@ generate_boxes(fz_context *ctx,
 
 	while (node)
 	{
-		match.up = up_match;
-		match.count = 0;
 
 		tag = fz_xml_tag(node);
 		if (tag)
 		{
-			fz_match_css(ctx, &match, g->css, node);
+			fz_css_match match;
+
+			fz_match_css(ctx, &match, up_match, g->css, node);
 
 			display = fz_get_css_match_display(&match);
 
@@ -697,18 +701,31 @@ generate_boxes(fz_context *ctx,
 
 			if (tag[0]=='b' && tag[1]=='r' && tag[2]==0)
 			{
-				if (top->type == BOX_INLINE)
+				fz_html_box *flow;
+				if (top->type != BOX_INLINE)
 				{
-					fz_html_box *flow = top;
+					/* Create anonymous inline box, with the same style as the top block box. */
+					fz_css_style style;
+					box = new_short_box(ctx, g->pool, markup_dir);
+					fz_default_css_style(ctx, &style);
+					box->style = fz_css_enlist(ctx, &style, &g->styles, g->pool);
+					insert_inline_box(ctx, box, top, markup_dir, g);
+					style = *top->style;
+					/* Make sure not to recursively multiply font sizes. */
+					style.font_size.value = 1;
+					style.font_size.unit = N_SCALE;
+					box->style = fz_css_enlist(ctx, &style, &g->styles, g->pool);
+					flow = box;
 					while (flow->type != BOX_FLOW)
 						flow = flow->up;
-					add_flow_break(ctx, g->pool, flow, top);
+					add_flow_break(ctx, g->pool, flow, box);
 				}
 				else
 				{
-					box = new_short_box(ctx, g->pool, markup_dir);
-					box->style = fz_css_enlist(ctx, &style, &g->styles, g->pool);
-					top = insert_break_box(ctx, box, top);
+					flow = top;
+					while (flow->type != BOX_FLOW)
+						flow = flow->up;
+					add_flow_break(ctx, g->pool, flow, top);
 				}
 				g->at_bol = 1;
 			}
@@ -758,7 +775,7 @@ generate_boxes(fz_context *ctx,
 				box = new_short_box(ctx, g->pool, markup_dir);
 				box->style = fz_css_enlist(ctx, &style, &g->styles, g->pool);
 				insert_inline_box(ctx, box, top, markup_dir, g);
-				generate_image(ctx, box, load_svg_image(ctx, g->zip, g->base_uri, node), g);
+				generate_image(ctx, box, load_svg_image(ctx, g->zip, g->base_uri, g->xml, node), g);
 			}
 
 			else if (g->is_fb2 && tag[0]=='i' && tag[1]=='m' && tag[2]=='a' && tag[3]=='g' && tag[4]=='e' && tag[5]==0)
@@ -885,7 +902,7 @@ generate_boxes(fz_context *ctx,
 					int child_section = section_depth;
 					if (!strcmp(tag, "ul") || !strcmp(tag, "ol"))
 						child_counter = 0;
-					if (!strcmp(tag, "section"))
+					else if (!strcmp(tag, "section"))
 						++child_section;
 					last_top = generate_boxes(ctx,
 						fz_xml_down(node),
@@ -1071,6 +1088,12 @@ load_fb2_images(fz_context *ctx, fz_xml *root)
 
 		fz_var(b64);
 		fz_var(buf);
+
+		if (id == NULL)
+		{
+			fz_warn(ctx, "Skipping image with no id");
+			continue;
+		}
 
 		fz_try(ctx)
 		{
@@ -1273,10 +1296,11 @@ fix_nexts(fz_html_box *box)
 	}
 }
 
-fz_html *
-fz_parse_html(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_buffer *buf, const char *user_css)
+static fz_html *
+fz_parse_html_imp(fz_context *ctx,
+	fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_buffer *buf, const char *user_css,
+	int try_xml, int try_html5)
 {
-	fz_xml_doc *xml;
 	fz_xml *root, *node;
 	fz_html *html = NULL;
 	char *title;
@@ -1295,14 +1319,35 @@ fz_parse_html(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const cha
 	g.last_brk_cls = UCDN_LINEBREAK_CLASS_OP;
 	g.styles = NULL;
 
-	xml = fz_parse_xml(ctx, buf, 1, 1);
-	root = fz_xml_root(xml);
+	if (try_xml && try_html5)
+	{
+		fz_try(ctx)
+			g.xml = fz_parse_xml(ctx, buf, 1);
+		fz_catch(ctx)
+		{
+			if (fz_caught(ctx) == FZ_ERROR_SYNTAX)
+			{
+				fz_warn(ctx, "syntax error in XHTML; retrying using HTML5 parser");
+				g.xml = fz_parse_xml_from_html5(ctx, buf);
+			}
+			else
+				fz_rethrow(ctx);
+		}
+	}
+	else if (try_xml)
+		g.xml = fz_parse_xml(ctx, buf, 1);
+	else if (try_html5)
+		g.xml = fz_parse_xml_from_html5(ctx, buf);
+	else
+		return NULL; /* should never happen! */
+
+	root = fz_xml_root(g.xml);
 
 	fz_try(ctx)
 		g.css = fz_new_css(ctx);
 	fz_catch(ctx)
 	{
-		fz_drop_xml(ctx, xml);
+		fz_drop_xml(ctx, g.xml);
 		fz_rethrow(ctx);
 	}
 
@@ -1360,8 +1405,6 @@ fz_parse_html(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const cha
 		html->layout_h = 0;
 		html->layout_em = 0;
 
-		match.up = NULL;
-		match.count = 0;
 		fz_match_css_at_page(ctx, &match, g.css);
 		fz_apply_css_style(ctx, g.set, &style, &match);
 		html->root->style = fz_css_enlist(ctx, &style, &g.styles, g.pool);
@@ -1396,7 +1439,7 @@ fz_parse_html(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const cha
 	{
 		fz_drop_tree(ctx, g.images, (void(*)(fz_context*,void*))fz_drop_image);
 		fz_drop_css(ctx, g.css);
-		fz_drop_xml(ctx, xml);
+		fz_drop_xml(ctx, g.xml);
 	}
 	fz_catch(ctx)
 	{
@@ -1405,6 +1448,27 @@ fz_parse_html(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const cha
 	}
 
 	return html;
+}
+
+fz_html *
+fz_parse_fb2(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_buffer *buf, const char *user_css)
+{
+	/* parse only as XML */
+	return fz_parse_html_imp(ctx, set, zip, base_uri, buf, user_css, 1, 0);
+}
+
+fz_html *
+fz_parse_html5(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_buffer *buf, const char *user_css)
+{
+	/* parse only as HTML5 */
+	return fz_parse_html_imp(ctx, set, zip, base_uri, buf, user_css, 0, 1);
+}
+
+fz_html *
+fz_parse_xhtml(fz_context *ctx, fz_html_font_set *set, fz_archive *zip, const char *base_uri, fz_buffer *buf, const char *user_css)
+{
+	/* try as XML first, fall back to HTML5 */
+	return fz_parse_html_imp(ctx, set, zip, base_uri, buf, user_css, 1, 1);
 }
 
 static void indent(int level)
@@ -1479,7 +1543,6 @@ fz_debug_html_box(fz_context *ctx, fz_html_box *box, int level)
 		indent(level);
 		switch (box->type) {
 		case BOX_BLOCK: printf("block"); break;
-		case BOX_BREAK: printf("break"); break;
 		case BOX_FLOW: printf("flow"); break;
 		case BOX_INLINE: printf("inline"); break;
 		case BOX_TABLE: printf("table"); break;
@@ -1586,6 +1649,7 @@ fz_format_html_key(fz_context *ctx, char *s, size_t n, void *key_)
 
 static const fz_store_type fz_html_store_type =
 {
+	"fz_html",
 	fz_make_hash_html_key,
 	fz_keep_html_key,
 	fz_drop_html_key,

@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 /*
 This code does smooth scaling of a pixmap.
 
@@ -231,7 +253,7 @@ new_weights(fz_context *ctx, fz_scale_filter *filter, int src_w, float dst_w, in
 	 * plus (2+max_len)*sizeof(int) for the weights
 	 * plus room for an extra set of weights for reordering.
 	 */
-	weights = fz_malloc(ctx, sizeof(*weights)+(max_len+3)*(patch_w+1)*sizeof(int));
+	weights = fz_malloc(ctx, sizeof(*weights)+(size_t)(max_len+3)*(patch_w+1)*sizeof(int));
 	if (!weights)
 		return NULL;
 	weights->count = -1;
@@ -1554,6 +1576,7 @@ fz_scale_pixmap_cached(fz_context *ctx, const fz_pixmap *src, float x, float y, 
 	/* Clamp small ranges of w and h */
 	if (w <= -1)
 	{
+		/* Large negative range. Don't clamp */
 	}
 	else if (w < 0)
 	{
@@ -1565,6 +1588,7 @@ fz_scale_pixmap_cached(fz_context *ctx, const fz_pixmap *src, float x, float y, 
 	}
 	if (h <= -1)
 	{
+		/* Large negative range. Don't clamp */
 	}
 	else if (h < 0)
 	{
@@ -1758,7 +1782,7 @@ fz_scale_pixmap_cached(fz_context *ctx, const fz_pixmap *src, float x, float y, 
 			goto cleanup;
 		fz_try(ctx)
 		{
-			temp = fz_calloc(ctx, temp_span*temp_rows, sizeof(unsigned char));
+			temp = fz_calloc(ctx, (size_t)temp_span*temp_rows, sizeof(unsigned char));
 		}
 		fz_catch(ctx)
 		{

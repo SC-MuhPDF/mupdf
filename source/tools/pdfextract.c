@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 /*
  * pdfextract -- the ultimate way to extract images and fonts from pdfs
  */
@@ -11,15 +33,17 @@
 static pdf_document *doc = NULL;
 static fz_context *ctx = NULL;
 static int dorgb = 0;
+static int doalpha = 0;
 static int doicc = 1;
 
-static void usage(void)
+static int usage(void)
 {
 	fprintf(stderr, "usage: mutool extract [options] file.pdf [object numbers]\n");
 	fprintf(stderr, "\t-p\tpassword\n");
 	fprintf(stderr, "\t-r\tconvert images to rgb\n");
+	fprintf(stderr, "\t-a\tembed SMasks as alpha channel\n");
 	fprintf(stderr, "\t-N\tdo not use ICC color conversions\n");
-	exit(1);
+	return 1;
 }
 
 static int isimage(pdf_obj *obj)
@@ -34,7 +58,7 @@ static int isfontdesc(pdf_obj *obj)
 	return pdf_name_eq(ctx, type, PDF_NAME(FontDescriptor));
 }
 
-static void writepixmap(fz_context *ctx, fz_pixmap *pix, char *file, int dorgb)
+static void writepixmap(fz_pixmap *pix, char *file)
 {
 	char buf[1024];
 	fz_pixmap *rgb = NULL;
@@ -51,13 +75,13 @@ static void writepixmap(fz_context *ctx, fz_pixmap *pix, char *file, int dorgb)
 	if (!pix->colorspace || pix->colorspace->type == FZ_COLORSPACE_GRAY || pix->colorspace->type == FZ_COLORSPACE_RGB)
 	{
 		fz_snprintf(buf, sizeof(buf), "%s.png", file);
-		printf("extracting image %s\n", buf);
+		printf("extracting %s\n", buf);
 		fz_save_pixmap_as_png(ctx, pix, buf);
 	}
 	else
 	{
 		fz_snprintf(buf, sizeof(buf), "%s.pam", file);
-		printf("extracting image %s\n", buf);
+		printf("extracting %s\n", buf);
 		fz_save_pixmap_as_pam(ctx, pix, buf);
 	}
 
@@ -65,7 +89,7 @@ static void writepixmap(fz_context *ctx, fz_pixmap *pix, char *file, int dorgb)
 }
 
 static void
-writejpeg(fz_context *ctx, const unsigned char *data, size_t len, const char *file)
+writejpeg(const unsigned char *data, size_t len, const char *file)
 {
 	char buf[1024];
 	fz_output *out;
@@ -75,7 +99,7 @@ writejpeg(fz_context *ctx, const unsigned char *data, size_t len, const char *fi
 	out = fz_new_output_with_path(ctx, buf, 0);
 	fz_try(ctx)
 	{
-		printf("extracting image %s\n", buf);
+		printf("extracting %s\n", buf);
 		fz_write_data(ctx, out, data, len);
 		fz_close_output(ctx, out);
 	}
@@ -89,6 +113,7 @@ static void saveimage(pdf_obj *ref)
 {
 	fz_image *image = NULL;
 	fz_pixmap *pix = NULL;
+	fz_pixmap *mask = NULL;
 	char buf[32];
 	fz_compressed_buffer *cbuf;
 	int type;
@@ -100,7 +125,7 @@ static void saveimage(pdf_obj *ref)
 	{
 		image = pdf_load_image(ctx, doc, ref);
 		cbuf = fz_compressed_image_buffer(ctx, image);
-		fz_snprintf(buf, sizeof(buf), "img-%04d", pdf_to_num(ctx, ref));
+		fz_snprintf(buf, sizeof(buf), "image-%04d", pdf_to_num(ctx, ref));
 		type = cbuf == NULL ? FZ_IMAGE_UNKNOWN : cbuf->params.type;
 
 		if (image->use_colorkey)
@@ -120,17 +145,32 @@ static void saveimage(pdf_obj *ref)
 		{
 			unsigned char *data;
 			size_t len = fz_buffer_storage(ctx, cbuf->buffer, &data);
-			writejpeg(ctx, data, len, buf);
+			writejpeg(data, len, buf);
 		}
 		else
 		{
 			pix = fz_get_pixmap_from_image(ctx, image, NULL, NULL, 0, 0);
-			writepixmap(ctx, pix, buf, dorgb);
+			if (image->mask && doalpha)
+			{
+				mask = fz_get_pixmap_from_image(ctx, image->mask, NULL, NULL, 0, 0);
+				if (mask->w == pix->w && mask->h == pix->h)
+				{
+					fz_pixmap *apix = fz_new_pixmap_from_color_and_mask(ctx, pix, mask);
+					fz_drop_pixmap(ctx, pix);
+					pix = apix;
+				}
+				else
+				{
+					fz_warn(ctx, "cannot combine image with smask if different resolution");
+				}
+			}
+			writepixmap(pix, buf);
 		}
 	}
 	fz_always(ctx)
 	{
 		fz_drop_image(ctx, image);
+		fz_drop_pixmap(ctx, mask);
 		fz_drop_pixmap(ctx, pix);
 	}
 	fz_catch(ctx)
@@ -139,19 +179,14 @@ static void saveimage(pdf_obj *ref)
 
 static void savefont(pdf_obj *dict)
 {
-	char namebuf[1024];
+	char namebuf[100];
 	fz_buffer *buf;
 	pdf_obj *stream = NULL;
 	pdf_obj *obj;
 	char *ext = "";
 	fz_output *out;
-	const char *fontname = "font";
 	size_t len;
 	unsigned char *data;
-
-	obj = pdf_dict_get(ctx, dict, PDF_NAME(FontName));
-	if (obj)
-		fontname = pdf_to_name(ctx, obj);
 
 	obj = pdf_dict_get(ctx, dict, PDF_NAME(FontFile));
 	if (obj)
@@ -196,8 +231,8 @@ static void savefont(pdf_obj *dict)
 	len = fz_buffer_storage(ctx, buf, &data);
 	fz_try(ctx)
 	{
-		fz_snprintf(namebuf, sizeof(namebuf), "%s-%04d.%s", fontname, pdf_to_num(ctx, dict), ext);
-		printf("extracting font %s\n", namebuf);
+		fz_snprintf(namebuf, sizeof(namebuf), "font-%04d.%s", pdf_to_num(ctx, dict), ext);
+		printf("extracting %s\n", namebuf);
 		out = fz_new_output_with_path(ctx, namebuf, 0);
 		fz_try(ctx)
 		{
@@ -229,6 +264,8 @@ static void extractobject(int num)
 			saveimage(ref);
 		if (isfontdesc(ref))
 			savefont(ref);
+
+		fz_empty_store(ctx);
 	}
 	fz_always(ctx)
 		pdf_drop_obj(ctx, ref);
@@ -242,19 +279,20 @@ int pdfextract_main(int argc, char **argv)
 	char *password = "";
 	int c, o;
 
-	while ((c = fz_getopt(argc, argv, "p:rN")) != -1)
+	while ((c = fz_getopt(argc, argv, "p:raN")) != -1)
 	{
 		switch (c)
 		{
 		case 'p': password = fz_optarg; break;
 		case 'r': dorgb++; break;
+		case 'a': doalpha++; break;
 		case 'N': doicc^=1; break;
-		default: usage(); break;
+		default: return usage();
 		}
 	}
 
 	if (fz_optind == argc)
-		usage();
+		return usage();
 
 	infile = argv[fz_optind++];
 

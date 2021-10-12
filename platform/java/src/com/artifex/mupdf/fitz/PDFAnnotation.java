@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 package com.artifex.mupdf.fitz;
 
 import java.util.Date;
@@ -14,7 +36,6 @@ public class PDFAnnotation
 
 	public void destroy() {
 		finalize();
-		pointer = 0;
 	}
 
 	protected PDFAnnotation(long p) {
@@ -55,12 +76,14 @@ public class PDFAnnotation
 	public static final int TYPE_FILE_ATTACHMENT = 17;
 	public static final int TYPE_SOUND = 18;
 	public static final int TYPE_MOVIE = 19;
-	public static final int TYPE_WIDGET = 20;
-	public static final int TYPE_SCREEN = 21;
-	public static final int TYPE_PRINTER_MARK = 22;
-	public static final int TYPE_TRAP_NET = 23;
-	public static final int TYPE_WATERMARK = 24;
-	public static final int TYPE_3D = 25;
+	public static final int TYPE_RICH_MEDIA = 20;
+	public static final int TYPE_WIDGET = 21;
+	public static final int TYPE_SCREEN = 22;
+	public static final int TYPE_PRINTER_MARK = 23;
+	public static final int TYPE_TRAP_NET = 24;
+	public static final int TYPE_WATERMARK = 25;
+	public static final int TYPE_3D = 26;
+	public static final int TYPE_PROJECTION = 27;
 	public static final int TYPE_UNKNOWN = -1;
 
 	public static final int LINE_ENDING_NONE = 0;
@@ -85,6 +108,16 @@ public class PDFAnnotation
 	public static final int IS_TOGGLE_NO_VIEW = 1 << (9-1);
 	public static final int IS_LOCKED_CONTENTS = 1 << (10-1);
 
+	/* Languages, keep in sync with FZ_LANG_* */
+	public static final int LANGUAGE_UNSET = 0;
+	public static final int LANGUAGE_ur = 507;
+	public static final int LANGUAGE_urd = 3423;
+	public static final int LANGUAGE_ko = 416;
+	public static final int LANGUAGE_ja = 37;
+	public static final int LANGUAGE_zh = 242;
+	public static final int LANGUAGE_zh_Hans = 14093;
+	public static final int LANGUAGE_zh_Hant = 14822;
+
 	public native int getType();
 	public native int getFlags();
 	public native void setFlags(int flags);
@@ -98,10 +131,20 @@ public class PDFAnnotation
 	public native void setColor(float[] color);
 	public native float[] getInteriorColor();
 	public native void setInteriorColor(float[] color);
+	public native float getOpacity();
+	public native void setOpacity(float opacity);
 	public native String getAuthor();
 	public native void setAuthor(String author);
+	protected native long getCreationDateNative();
+	protected native void setCreationDate(long time);
 	protected native long getModificationDateNative();
 	protected native void setModificationDate(long time);
+	public Date getCreationDate() {
+		return new Date(getCreationDateNative());
+	}
+	public void setCreationDate(Date date) {
+		setCreationDate(date.getTime());
+	}
 	public Date getModificationDate() {
 		return new Date(getModificationDateNative());
 	}
@@ -199,4 +242,52 @@ public class PDFAnnotation
 	public native void eventBlur();
 
 	public native boolean update();
+
+	public native PDFObject getObject();
+
+	public native int getLanguage();
+	public native void setLanguage(int lang);
+
+	public native int getQuadding();
+	public native void setQuadding(int quadding);
+
+	public native Point[] getLine();
+	public native void setLine(Point a, Point b);
+
+	public native DefaultAppearance getDefaultAppearance();
+	public native void setDefaultAppearance(String font, float size, float[] color);
+
+	protected native void setNativeAppearance(String appearance, String state, Matrix ctm, Rect bbox, PDFObject res, Buffer contents);
+	protected native void setNativeAppearanceDisplayList(String appearance, String state, Matrix ctm, DisplayList list);
+
+	public void setAppearance(String appearance, String state, Matrix ctm, Rect bbox, PDFObject res, Buffer contents) {
+		setNativeAppearance(appearance, state, ctm, bbox, res, contents);
+	}
+	public void setAppearance(String appearance, Matrix ctm, Rect bbox, PDFObject res, Buffer contents) {
+		setNativeAppearance(appearance, null, ctm, bbox, res, contents);
+	}
+	public void setAppearance(String appearance, Rect bbox, PDFObject res, Buffer contents) {
+		setNativeAppearance(appearance, null, null, bbox, res, contents);
+	}
+	public void setAppearance(Matrix ctm, Rect bbox, PDFObject res, Buffer contents) {
+		setNativeAppearance(null, null, ctm, bbox, res, contents);
+	}
+	public void setAppearance(Rect bbox, PDFObject res, Buffer contents) {
+		setNativeAppearance(null, null, null, bbox, res, contents);
+	}
+	public void setAppearance(String appearance, String state, Matrix ctm, DisplayList list) {
+		setNativeAppearanceDisplayList(appearance, state, ctm, list);
+	}
+	public void setAppearance(String appearance, Matrix ctm, DisplayList list) {
+		setNativeAppearanceDisplayList(appearance, null, ctm, list);
+	}
+	public void setAppearance(String appearance, DisplayList list) {
+		setNativeAppearanceDisplayList(appearance, null, null, list);
+	}
+	public void setAppearance(Matrix ctm, DisplayList list) {
+		setNativeAppearanceDisplayList(null, null, ctm, list);
+	}
+	public void setAppearance(DisplayList list) {
+		setNativeAppearanceDisplayList(null, null, null, list);
+	}
 }

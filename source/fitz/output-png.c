@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
 
 #include "z-imp.h"
@@ -171,6 +193,11 @@ png_write_header(fz_context *ctx, fz_band_writer *writer_, fz_colorspace *cs)
 	fz_write_data(ctx, out, pngsig, 8);
 	putchunk(ctx, out, "IHDR", head, 13);
 
+	big32(head+0, writer->super.xres * 100/2.54f + 0.5f);
+	big32(head+4, writer->super.yres * 100/2.54f + 0.5f);
+	head[8] = 1; /* metre */
+	putchunk(ctx, out, "pHYs", head, 9);
+
 	png_write_icc(ctx, writer, cs);
 }
 
@@ -196,7 +223,7 @@ png_write_band(fz_context *ctx, fz_band_writer *writer_, int stride, int band_st
 
 	if (writer->udata == NULL)
 	{
-		writer->usize = (w * n + 1) * band_height;
+		writer->usize = ((uLong)w * n + 1) * band_height;
 		/* Sadly the bound returned by compressBound is just for a
 		 * single usize chunk; if you compress a sequence of them
 		 * the buffering can result in you suddenly getting a block
@@ -282,6 +309,14 @@ png_write_band(fz_context *ctx, fz_band_writer *writer_, int stride, int band_st
 		else
 		{
 			err = deflate(&writer->stream, Z_FINISH);
+			if (err == Z_OK)
+			{
+				/* more output space needed, try again */
+				writer->cdata = Memento_label(fz_realloc(ctx, writer->cdata, writer->csize << 2), "realloc png_write_cdata");
+				writer->csize <<= 2;
+				continue;
+			}
+
 			if (err != Z_STREAM_END)
 				fz_throw(ctx, FZ_ERROR_GENERIC, "compression error %d", err);
 		}

@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 /*
  * PDF merge tool: Tool for merging pdf content.
  *
@@ -10,7 +32,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-static void usage(void)
+static int usage(void)
 {
 	fprintf(stderr,
 		"usage: mutool merge [-o output.pdf] [-O options] input.pdf [pages] [input2.pdf] [pages2] ...\n"
@@ -20,7 +42,7 @@ static void usage(void)
 		"\tpages\tcomma separated list of page numbers and ranges\n\n"
 		);
 	fputs(fz_pdf_write_options_usage, stderr);
-	exit(1);
+	return 1;
 }
 
 static fz_context *ctx = NULL;
@@ -29,60 +51,7 @@ static pdf_document *doc_src = NULL;
 
 static void page_merge(int page_from, int page_to, pdf_graft_map *graft_map)
 {
-	pdf_obj *page_ref;
-	pdf_obj *page_dict = NULL;
-	pdf_obj *obj;
-	pdf_obj *ref = NULL;
-	int i;
-
-	/* Copy as few key/value pairs as we can. Do not include items that reference other pages. */
-	static pdf_obj * const copy_list[] = {
-		PDF_NAME(Contents),
-		PDF_NAME(Resources),
-		PDF_NAME(MediaBox),
-		PDF_NAME(CropBox),
-		PDF_NAME(BleedBox),
-		PDF_NAME(TrimBox),
-		PDF_NAME(ArtBox),
-		PDF_NAME(Rotate),
-		PDF_NAME(UserUnit)
-	};
-
-	fz_var(ref);
-	fz_var(page_dict);
-
-	fz_try(ctx)
-	{
-		page_ref = pdf_lookup_page_obj(ctx, doc_src, page_from - 1);
-		pdf_flatten_inheritable_page_items(ctx, page_ref);
-
-		/* Make a new page object dictionary to hold the items we copy from the source page. */
-		page_dict = pdf_new_dict(ctx, doc_des, 4);
-
-		pdf_dict_put(ctx, page_dict, PDF_NAME(Type), PDF_NAME(Page));
-
-		for (i = 0; i < (int)nelem(copy_list); i++)
-		{
-			obj = pdf_dict_get(ctx, page_ref, copy_list[i]);
-			if (obj != NULL)
-				pdf_dict_put_drop(ctx, page_dict, copy_list[i], pdf_graft_mapped_object(ctx, graft_map, obj));
-		}
-
-		/* Add the page object to the destination document. */
-		ref = pdf_add_object(ctx, doc_des, page_dict);
-
-		/* Insert it into the page tree. */
-		pdf_insert_page(ctx, doc_des, page_to - 1, ref);
-	}
-	fz_always(ctx)
-	{
-		pdf_drop_obj(ctx, page_dict);
-		pdf_drop_obj(ctx, ref);
-	}
-	fz_catch(ctx)
-	{
-		fz_rethrow(ctx);
-	}
+	pdf_graft_mapped_page(ctx, graft_map, page_to - 1, doc_src, page_from - 1);
 }
 
 static void merge_range(const char *range)
@@ -129,12 +98,12 @@ int pdfmerge_main(int argc, char **argv)
 		{
 		case 'o': output = fz_optarg; break;
 		case 'O': flags = fz_optarg; break;
-		default: usage(); break;
+		default: return usage();
 		}
 	}
 
 	if (fz_optind == argc)
-		usage();
+		return usage();
 
 	ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED);
 	if (!ctx)
@@ -160,11 +129,12 @@ int pdfmerge_main(int argc, char **argv)
 	/* Step through the source files */
 	while (fz_optind < argc)
 	{
+		doc_src = NULL;
 		input = argv[fz_optind++];
-		doc_src = pdf_open_document(ctx, input);
 
 		fz_try(ctx)
 		{
+			doc_src = pdf_open_document(ctx, input);
 			if (fz_optind == argc || !fz_is_page_range(ctx, argv[fz_optind]))
 				merge_range("1-N");
 			else

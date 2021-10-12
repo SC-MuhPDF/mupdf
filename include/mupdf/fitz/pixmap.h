@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #ifndef MUPDF_FITZ_PIXMAP_H
 #define MUPDF_FITZ_PIXMAP_H
 
@@ -26,22 +48,22 @@ fz_irect fz_pixmap_bbox(fz_context *ctx, const fz_pixmap *pix);
 /**
 	Return the width of the pixmap in pixels.
 */
-int fz_pixmap_width(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_width(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the height of the pixmap in pixels.
 */
-int fz_pixmap_height(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_height(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the x value of the pixmap in pixels.
 */
-int fz_pixmap_x(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_x(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the y value of the pixmap in pixels.
 */
-int fz_pixmap_y(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_y(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Create a new pixmap, with its origin at (0,0)
@@ -153,7 +175,7 @@ fz_pixmap *fz_new_pixmap_from_pixmap(fz_context *ctx, fz_pixmap *pixmap, const f
 
 	The reference count of 'old' is unchanged.
 */
-fz_pixmap *fz_clone_pixmap(fz_context *ctx, fz_pixmap *old);
+fz_pixmap *fz_clone_pixmap(fz_context *ctx, const fz_pixmap *old);
 
 /**
 	Increment the reference count for the pixmap. The same pointer
@@ -176,14 +198,14 @@ void fz_drop_pixmap(fz_context *ctx, fz_pixmap *pix);
 
 	Returns colorspace.
 */
-fz_colorspace *fz_pixmap_colorspace(fz_context *ctx, fz_pixmap *pix);
+fz_colorspace *fz_pixmap_colorspace(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the number of components in a pixmap.
 
 	Returns the number of components (including spots and alpha).
 */
-int fz_pixmap_components(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_components(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the number of colorants in a pixmap.
@@ -191,7 +213,7 @@ int fz_pixmap_components(fz_context *ctx, fz_pixmap *pix);
 	Returns the number of colorants (components, less any spots and
 	alpha).
 */
-int fz_pixmap_colorants(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_colorants(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the number of spots in a pixmap.
@@ -199,26 +221,26 @@ int fz_pixmap_colorants(fz_context *ctx, fz_pixmap *pix);
 	Returns the number of spots (components, less colorants and
 	alpha). Does not throw exceptions.
 */
-int fz_pixmap_spots(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_spots(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the number of alpha planes in a pixmap.
 
 	Returns the number of alphas. Does not throw exceptions.
 */
-int fz_pixmap_alpha(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_alpha(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Returns a pointer to the pixel data of a pixmap.
 
 	Returns the pointer.
 */
-unsigned char *fz_pixmap_samples(fz_context *ctx, fz_pixmap *pix);
+unsigned char *fz_pixmap_samples(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Return the number of bytes in a row in the pixmap.
 */
-int fz_pixmap_stride(fz_context *ctx, fz_pixmap *pix);
+int fz_pixmap_stride(fz_context *ctx, const fz_pixmap *pix);
 
 /**
 	Set the pixels per inch resolution of the pixmap.
@@ -271,6 +293,11 @@ void fz_clear_pixmap(fz_context *ctx, fz_pixmap *pix);
 	unchanged).
 */
 void fz_invert_pixmap(fz_context *ctx, fz_pixmap *pix);
+
+/**
+	Invert the alpha fo all the pixels in a pixmap.
+*/
+void fz_invert_pixmap_alpha(fz_context *ctx, fz_pixmap *pix);
 
 /**
 	Transform the pixels in a pixmap so that luminance of each
@@ -327,7 +354,7 @@ void fz_gamma_pixmap(fz_context *ctx, fz_pixmap *pix, float gamma);
 	keep_alpha: If 0 any alpha component is removed, otherwise
 	alpha is kept if present in the pixmap.
 */
-fz_pixmap *fz_convert_pixmap(fz_context *ctx, fz_pixmap *pix, fz_colorspace *cs_des, fz_colorspace *prf, fz_default_colorspaces *default_cs, fz_color_params color_params, int keep_alpha);
+fz_pixmap *fz_convert_pixmap(fz_context *ctx, const fz_pixmap *pix, fz_colorspace *cs_des, fz_colorspace *prf, fz_default_colorspaces *default_cs, fz_color_params color_params, int keep_alpha);
 
 /**
 	Check if the pixmap is a 1-channel image containing samples with
@@ -340,6 +367,9 @@ int fz_is_pixmap_monochrome(fz_context *ctx, fz_pixmap *pixmap);
 fz_pixmap *fz_alpha_from_gray(fz_context *ctx, fz_pixmap *gray);
 void fz_decode_tile(fz_context *ctx, fz_pixmap *pix, const float *decode);
 void fz_md5_pixmap(fz_context *ctx, fz_pixmap *pixmap, unsigned char digest[16]);
+
+fz_stream *
+fz_unpack_stream(fz_context *ctx, fz_stream *src, int depth, int w, int h, int n, int indexed, int pad, int skip);
 
 /**
 	Pixmaps represent a set of pixels for a 2 dimensional region of
@@ -407,5 +437,32 @@ enum
 	FZ_PIXMAP_FLAG_INTERPOLATE = 1,
 	FZ_PIXMAP_FLAG_FREE_SAMPLES = 2
 };
+
+/* Create a new pixmap from a warped section of another.
+ *
+ * Colorspace, resolution etc are inherited from the original.
+ * points give the corner points within the original pixmap of a
+ * (convex) quadrilateral. These corner points will be 'warped' to be
+ * the corner points of the returned bitmap, which will have the given
+ * width/height.
+ */
+fz_pixmap *
+fz_warp_pixmap(fz_context *ctx, fz_pixmap *src, const fz_point points[4], int width, int height);
+
+/*
+	Convert between different separation results.
+*/
+fz_pixmap *fz_clone_pixmap_area_with_different_seps(fz_context *ctx, fz_pixmap *src, const fz_irect *bbox, fz_colorspace *dcs, fz_separations *seps, fz_color_params color_params, fz_default_colorspaces *default_cs);
+
+/*
+ * Extract alpha channel as a separate pixmap.
+ * Returns NULL if there is no alpha channel in the source.
+ */
+fz_pixmap *fz_new_pixmap_from_alpha_channel(fz_context *ctx, fz_pixmap *src);
+
+/*
+ * Combine a pixmap without an alpha channel with a soft mask.
+ */
+fz_pixmap *fz_new_pixmap_from_color_and_mask(fz_context *ctx, fz_pixmap *color, fz_pixmap *mask);
 
 #endif

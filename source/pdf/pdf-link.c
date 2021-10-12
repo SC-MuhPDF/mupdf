@@ -1,5 +1,27 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #include "mupdf/fitz.h"
-#include "mupdf/pdf.h"
+#include "pdf-annot-imp.h"
 
 #include <string.h>
 
@@ -43,10 +65,8 @@ char *
 pdf_parse_link_dest(fz_context *ctx, pdf_document *doc, pdf_obj *dest)
 {
 	pdf_obj *obj, *pageobj;
-	fz_rect mediabox;
-	fz_matrix pagectm;
 	const char *ld;
-	int page, x, y, h;
+	int page;
 
 	dest = resolve_dest(ctx, doc, dest);
 	if (dest == NULL)
@@ -86,40 +106,49 @@ pdf_parse_link_dest(fz_context *ctx, pdf_document *doc, pdf_obj *dest)
 	obj = pdf_array_get(ctx, dest, 1);
 	if (obj)
 	{
-		/* Link coords use a coordinate space that does not seem to respect Rotate or UserUnit. */
-		/* All we need to do is figure out the page height to flip the coordinate space. */
-		pdf_page_obj_transform(ctx, pageobj, &mediabox, &pagectm);
-		mediabox = fz_transform_rect(mediabox, pagectm);
-		h = mediabox.y1 - mediabox.y0;
+		pdf_obj *xo = NULL;
+		pdf_obj *yo = NULL;
 
 		if (pdf_name_eq(ctx, obj, PDF_NAME(XYZ)))
 		{
-			x = pdf_array_get_int(ctx, dest, 2);
-			y = h - pdf_array_get_int(ctx, dest, 3);
+			xo = pdf_array_get(ctx, dest, 2);
+			yo = pdf_array_get(ctx, dest, 3);
 		}
 		else if (pdf_name_eq(ctx, obj, PDF_NAME(FitR)))
 		{
-			x = pdf_array_get_int(ctx, dest, 2);
-			y = h - pdf_array_get_int(ctx, dest, 5);
+			xo = pdf_array_get(ctx, dest, 2);
+			yo = pdf_array_get(ctx, dest, 5);
 		}
 		else if (pdf_name_eq(ctx, obj, PDF_NAME(FitH)) || pdf_name_eq(ctx, obj, PDF_NAME(FitBH)))
 		{
-			x = 0;
-			y = h - pdf_array_get_int(ctx, dest, 2);
+			yo = pdf_array_get(ctx, dest, 2);
 		}
 		else if (pdf_name_eq(ctx, obj, PDF_NAME(FitV)) || pdf_name_eq(ctx, obj, PDF_NAME(FitBV)))
 		{
-			x = pdf_array_get_int(ctx, dest, 2);
-			y = 0;
+			xo = pdf_array_get(ctx, dest, 2);
 		}
-		else
-		{
-			x = 0;
-			y = 0;
-		}
-		return fz_asprintf(ctx, "#%d,%d,%d", page + 1, x, y);
-	}
 
+		if (xo || yo)
+		{
+			int x, y, w, h;
+			fz_rect mediabox;
+			fz_matrix pagectm;
+
+			/* Link coords use a coordinate space that does not seem to respect Rotate or UserUnit. */
+			/* All we need to do is figure out the page size to flip the coordinate space and
+			 * clamp the coordinates to stay on the page. */
+			pdf_page_obj_transform(ctx, pageobj, &mediabox, &pagectm);
+			mediabox = fz_transform_rect(mediabox, pagectm);
+			w = mediabox.x1 - mediabox.x0;
+			h = mediabox.y1 - mediabox.y0;
+
+			x = xo ? pdf_to_int(ctx, xo) : 0;
+			y = yo ? h - pdf_to_int(ctx, yo) : 0;
+			x = fz_clamp(x, 0, w);
+			y = fz_clamp(y, 0, h);
+			return fz_asprintf(ctx, "#%d,%d,%d", page + 1, x, y);
+		}
+	}
 	return fz_asprintf(ctx, "#%d", page + 1);
 }
 
@@ -298,6 +327,7 @@ pdf_add_embedded_file(fz_context *ctx, pdf_document *doc,
 	if (!mimetype)
 		mimetype = pdf_guess_mime_type_from_file_name(ctx, filename);
 
+	pdf_begin_operation(ctx, doc, "Embed file");
 	fz_try(ctx)
 	{
 		file = pdf_add_new_dict(ctx, doc, 3);
@@ -314,6 +344,7 @@ pdf_add_embedded_file(fz_context *ctx, pdf_document *doc,
 	}
 	fz_always(ctx)
 	{
+		pdf_end_operation(ctx, doc);
 		pdf_drop_obj(ctx, file);
 	}
 	fz_catch(ctx)
@@ -428,7 +459,7 @@ pdf_load_link(fz_context *ctx, pdf_document *doc, pdf_obj *dict, int pagenum, fz
 		return NULL;
 
 	fz_try(ctx)
-		link = fz_new_link(ctx, bbox, doc, uri);
+		link = fz_new_link(ctx, bbox, uri);
 	fz_always(ctx)
 		fz_free(ctx, uri);
 	fz_catch(ctx)

@@ -1,3 +1,25 @@
+// Copyright (C) 2004-2021 Artifex Software, Inc.
+//
+// This file is part of MuPDF.
+//
+// MuPDF is free software: you can redistribute it and/or modify it under the
+// terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option)
+// any later version.
+//
+// MuPDF is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+// details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with MuPDF. If not, see <https://www.gnu.org/licenses/agpl-3.0.en.html>
+//
+// Alternative licensing terms are available from the licensor.
+// For commercial licensing, see <https://www.artifex.com/> or contact
+// Artifex Software, Inc., 1305 Grant Avenue - Suite 200, Novato,
+// CA 94945, U.S.A., +1(415)492-9861, for further information.
+
 #ifndef MUPDF_FITZ_XML_H
 #define MUPDF_FITZ_XML_H
 
@@ -15,11 +37,14 @@ typedef struct fz_xml fz_xml;
 	Parse the contents of buffer into a tree of xml nodes.
 
 	preserve_white: whether to keep or delete all-whitespace nodes.
-
-	for_html: enable special html tweaks (auto closing of tags,
-	workarounds for less-than-perfect nesting etc).
 */
-fz_xml_doc *fz_parse_xml(fz_context *ctx, fz_buffer *buf, int preserve_white, int for_html);
+fz_xml_doc *fz_parse_xml(fz_context *ctx, fz_buffer *buf, int preserve_white);
+
+/**
+	Parse the contents of a buffer into a tree of XML nodes,
+	using the HTML5 parsing algorithm.
+*/
+fz_xml_doc *fz_parse_xml_from_html5(fz_context *ctx, fz_buffer *buf);
 
 /**
 	Free the XML node and all its children and siblings.
@@ -72,6 +97,13 @@ char *fz_xml_tag(fz_xml *item);
 	NULL if the attribute doesn't exist.
 */
 char *fz_xml_att(fz_xml *item, const char *att);
+
+/**
+	Return the value of an attribute of an XML node.
+	If the first attribute doesn't exist, try the second.
+	NULL if neither attribute exists.
+*/
+char *fz_xml_att_alt(fz_xml *item, const char *one, const char *two);
 
 /**
 	Check for a matching attribute on an XML node.
